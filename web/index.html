@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>AI Agency Control Room</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Martian+Mono:wght@400;600&family=Instrument+Sans:wght@400;600;700&display=swap">
+</head>
+<body data-mode="sim">
+<div class="wrap">
+  <header>
+    <div>
+      <h1>AI Agency Control Room</h1>
+      <p class="sub">Alur kerja agensi dari brief sampai deploy. Mode Live membaca project asli dari <code>api.py</code>; mode Simulasi menguji tingkat GOAT dengan model Claude Pro &amp; Codex pilihanmu.</p>
+    </div>
+    <div class="headctl">
+      <span class="conn" id="conn">memeriksa api.py…</span>
+      <div class="seg" role="group" aria-label="Mode">
+        <button type="button" id="modeLive" aria-pressed="false">Live</button>
+        <button type="button" id="modeSim" aria-pressed="true">Simulasi</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="stages" id="stages" aria-label="Tahap agensi"></div>
+
+  <div class="map"><div class="flash" id="flash"></div><div class="mapscroll">
+    <svg id="svg" viewBox="0 0 900 300" role="img" aria-label="Peta alur">
+      <g id="edges"></g><g id="nodes"></g><g id="fx"></g>
+    </svg>
+  </div></div>
+  <div class="legend">
+    <span style="--c:var(--rule)">Aturan / script (gratis)</span>
+    <span style="--c:var(--codex)">Codex · ChatGPT Plus</span>
+    <span style="--c:var(--claude)">Claude · Pro</span>
+    <span style="--c:var(--warn)">Fallback / eskalasi</span>
+  </div>
+
+  <section class="cfgwrap" aria-label="Model per tingkat GOAT">
+    <div class="cfghead">
+      <h2>Model per tingkat GOAT</h2>
+      <p>Satu tingkat = satu model, dari Claude Pro atau ChatGPT Plus (Codex). <span id="cfgState" class="t-dim"></span>. Executor di <code>app/execution</code> belum membaca pilihan ini.</p>
+      <button class="go" id="cfgReset" type="button" data-lock>Reset default</button>
+    </div>
+    <div class="cfg" id="cfg"></div>
+  </section>
+
+  <div class="grid">
+    <section class="term" aria-label="Terminal">
+      <div class="bar"><div class="dots"><i></i><i></i><i></i></div><span>~/AI_Agency_System</span>
+        <span class="barctl">
+          <label for="speed">Kecepatan</label>
+          <select id="speed"><option value="1">Normal</option><option value="0.45">Cepat</option><option value="2">Lambat</option><option value="0">Instan</option></select>
+          <button class="go primary" id="auto" type="button" data-lock data-show="sim">▶ Demo otomatis</button>
+        </span>
+      </div>
+      <div class="liverow" data-show="live" hidden>
+        <label for="project">Project</label>
+        <select id="project" data-lock></select>
+        <button class="go" id="refresh" type="button" data-lock>Muat ulang</button>
+        <button class="go primary" id="replay" type="button" data-lock>▶ Replay eksekusi</button>
+      </div>
+      <div id="out" role="log" aria-live="polite"></div>
+      <div class="approve" id="approve" hidden></div>
+      <div class="presets" id="presets" data-show="sim">
+        <button type="button" data-lock data-p="quick">Ganti teks hero</button>
+        <button type="button" data-lock data-p="build">Form kontak + validasi</button>
+        <button type="button" data-lock data-p="deep">Integrasi payment</button>
+        <button type="button" data-lock data-p="creative">Naskah video 60 detik</button>
+        <button type="button" data-lock data-p="attack">Input "pakai model termahal"</button>
+      </div>
+      <form class="prompt" id="form" data-show="sim">
+        <label for="task">$ task</label>
+        <input id="task" autocomplete="off" data-lock placeholder="ketik task, misal: tambah halaman portofolio">
+        <button class="go" id="go" type="submit" data-lock>Jalankan</button>
+      </form>
+    </section>
+
+    <aside data-show="sim">
+      <div class="card">
+        <h2>Balapan biaya (ilustrasi)</h2>
+        <div class="ratio" id="ratio">—<small>jalankan task untuk membandingkan</small></div>
+        <div class="meter" style="margin-top:12px"><div class="row"><span class="t-pass">Router ini</span><b id="cR">0 unit</b></div><div class="track"><div class="fill" id="bR" style="background:var(--pass)"></div></div></div>
+        <div class="meter"><div class="row"><span class="t-fail">Model teratas, effort tertinggi, semua task</span><b id="cN">0 unit</b></div><div class="track"><div class="fill" id="bN" style="background:var(--fail)"></div></div></div>
+      </div>
+      <div class="card">
+        <h2>Kuota langganan</h2>
+        <div class="meter"><div class="row"><span class="t-claude">Claude Pro</span><b id="qc">0 / 100</b></div><div class="track"><div class="fill" id="fc" style="background:var(--claude)"></div></div></div>
+        <div class="meter"><div class="row"><span class="t-codex">ChatGPT Plus · Codex</span><b id="qx">0 / 100</b></div><div class="track"><div class="fill" id="fxq" style="background:var(--codex)"></div></div></div>
+        <div class="stats">
+          <div class="stat"><b id="sTask">0</b><span>task selesai</span></div>
+          <div class="stat"><b id="sEsc">0%</b><span>escalation rate</span></div>
+          <div class="stat"><b id="sRev">0</b><span>review oleh LLM</span></div>
+          <div class="stat"><b id="sSave">0</b><span>unit Claude dihemat vs review penuh</span></div>
+        </div>
+        <p class="note">Unit = ilustrasi untuk perbandingan, bukan limit resmi.</p>
+      </div>
+      <div class="card">
+        <h2>Routing lessons (memory)</h2>
+        <ul id="mem"><li>landing page teks/warna → quick</li><li>auth / payment / migrasi → deep</li></ul>
+      </div>
+    </aside>
+
+    <aside data-show="live" hidden>
+      <div class="card">
+        <h2>Routing plan</h2>
+        <div class="stats">
+          <div class="stat"><b id="lvTasks">0</b><span>task</span></div>
+          <div class="stat"><b id="lvMode">—</b><span>mode eksekusi terakhir</span></div>
+          <div class="stat"><b id="lvClaude" class="t-claude">0</b><span>Claude Code</span></div>
+          <div class="stat"><b id="lvCodex" class="t-codex">0</b><span>Codex</span></div>
+          <div class="stat"><b id="lvQa" class="t-rule">0</b><span>Deterministic QA</span></div>
+          <div class="stat"><b id="lvEsc" class="t-warn">0</b><span>fallback / repair</span></div>
+          <div class="stat"><b id="lvFail" class="t-fail">0</b><span>task gagal</span></div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Delivery checks</h2>
+        <ul class="checks" id="lvChecks"></ul>
+      </div>
+      <div class="card">
+        <h2>Deployment</h2>
+        <p class="mono-sm" id="lvDeploy">—</p>
+      </div>
+    </aside>
+  </div>
+
+  <section class="ledger">
+    <h2>Log per task</h2>
+    <div class="scroll"><table>
+      <thead id="ledgerHead"></thead>
+      <tbody id="ledger"></tbody>
+    </table></div>
+  </section>
+</div>
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
