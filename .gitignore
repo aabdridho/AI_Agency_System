@@ -1,0 +1,7 @@
+﻿.venv/
+__pycache__/
+.pytest_cache/
+runtime_data/
+backup_before_workspace_migration/
+*.pyc
+.env
