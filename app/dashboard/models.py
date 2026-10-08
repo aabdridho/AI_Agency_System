@@ -5,7 +5,15 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator
 
 # One entry per folder in app/, in pipeline order.
-STAGE_KEYS = ("discovery", "documentation", "routing", "execution", "delivery", "deployment")
+STAGE_KEYS = (
+    "discovery",
+    "documentation",
+    "routing",
+    "execution",
+    "delivery",
+    "economics",
+    "deployment",
+)
 
 StageStatus = Literal["todo", "wait", "done", "fail"]
 
@@ -30,6 +38,7 @@ class ProjectDetail(ProjectSummary):
     deployment_plan: dict[str, Any] | None = None
     deployment_result: dict[str, Any] | None = None
     handoff: dict[str, Any] | None = None
+    orchestration: dict[str, Any] | None = None
 
 
 # ---------- GOAT tier config used by the dashboard ----------

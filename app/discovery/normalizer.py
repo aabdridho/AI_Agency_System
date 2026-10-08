@@ -17,6 +17,14 @@ THEME_SYNONYMS = {
 SECTION_SYNONYMS = {
     "hero": ["hero", "hero section"],
     "about": ["about", "about me", "tentang saya"],
+    "services": [
+        "service",
+        "services",
+        "service section",
+        "services section",
+        "layanan",
+        "bagian layanan",
+    ],
     "skills": ["skill", "skills", "keahlian"],
     "experience": ["experience", "pengalaman"],
     "projects": ["project", "projects", "proyek"],
@@ -117,11 +125,18 @@ class RequirementNormalizer:
 
         display_only_patterns = [
             r"\bhanya\s+(?:menampilkan|tampilkan)\s+kontak\b",
+            r"\bhanya\s+menampilkan\s+email\b",
             r"\btampilkan\s+kontak\b",
             r"\bkontak\s+saja\b",
             r"\bhanya\s+kontak\b",
             r"\bdisplay\s+only\b",
             r"\btanpa\s+form\b",
+            r"\btidak\s+perlu\s+form\b",
+            r"\btak\s+perlu\s+form\b",
+            r"\bnggak\s+perlu\s+form\b",
+            r"\bgak\s+perlu\s+form\b",
+            r"\bno\s+form\b",
+            r"\bwithout\s+(?:a\s+)?form\b",
         ]
         if any(re.search(pattern, p) for pattern in display_only_patterns):
             return "display_only"
@@ -219,6 +234,31 @@ class RequirementNormalizer:
     def extract_contact_details(self, prompt: str):
         p = prompt.lower()
         items = []
+
+        behavior = self.normalize_contact_behavior(prompt)
+
+        if behavior:
+            items.append(RequirementItem(
+                key="contact_behavior",
+                value=behavior,
+                status="CONFIRMED",
+                source="client_prompt_normalized",
+                blocking=False,
+                confidence=1.0,
+            ))
+
+        if (
+            behavior == "display_only"
+            and "email" in p
+        ):
+            items.append(RequirementItem(
+                key="contact_destination",
+                value="email",
+                status="CONFIRMED",
+                source="client_prompt_normalized",
+                blocking=False,
+                confidence=1.0,
+            ))
 
         if "contact form" in p or re.search(r"\bform\s+kontak\b", p):
             items.append(RequirementItem(

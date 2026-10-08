@@ -375,7 +375,7 @@ class ExecutionEngine:
 
             # Every repair attempt starts from the current clean integration state.
             git.create_or_reset_branch_from(repair_branch, integration_branch)
-            print(f"â†’ QA repair attempt {attempt} with {owner}...")
+            print(f"-> QA repair attempt {attempt} with {owner}...")
 
             self._agent_start(
                 owner,
@@ -428,7 +428,7 @@ class ExecutionEngine:
                     if proc.returncode != 0
                     else "repair returned success but produced no repository changes"
                 )
-                print(f"â†’ QA repair owner {owner} failed ({reason}).")
+                print(f"-> QA repair owner {owner} failed ({reason}).")
 
                 self._agent_error(
                     owner,
@@ -482,7 +482,7 @@ class ExecutionEngine:
                     "stderr": "QA repair commit could not be verified in integration.",
                 }
 
-            print(f"âœ“ QA repair merged into {integration_branch}")
+            print(f"[OK] QA repair merged into {integration_branch}")
 
             self._agent_idle(owner)
 
@@ -555,7 +555,7 @@ class ExecutionEngine:
 
             if not dry_run:
                 print("\n" + "=" * 72)
-                print(f"[{index}/{total}] {decision.task_id} â€” {decision.task_text}")
+                print(f"[{index}/{total}] {decision.task_id} - {decision.task_text}")
                 print(f"Owner: {decision.primary_owner}")
                 print("=" * 72)
 
@@ -566,7 +566,7 @@ class ExecutionEngine:
                 and decision.primary_owner != "deterministic_qa"
                 and git.task_already_merged(task_branch, integration_branch)
             ):
-                print(f"â†· {decision.task_id} already merged; skipping.")
+                print(f"-> {decision.task_id} already merged; skipping.")
                 records.append(
                     ExecutionRecord(
                         task_id=decision.task_id,
@@ -703,7 +703,7 @@ class ExecutionEngine:
                     repair_branch = repair["branch"]
 
                     if repair_succeeded:
-                        print("â†’ Re-running deterministic QA after repair...")
+                        print("-> Re-running deterministic QA after repair...")
                         git.create_or_switch_integration(integration_branch)
 
                         self._agent_start(
@@ -803,7 +803,7 @@ class ExecutionEngine:
             git.create_or_reset_branch_from(task_branch, integration_branch)
             base_sha = git.head_sha()
 
-            print(f"â†’ Starting {decision.primary_owner}...")
+            print(f"-> Starting {decision.primary_owner}...")
 
             self._agent_start(
                 decision.primary_owner,
@@ -820,6 +820,11 @@ class ExecutionEngine:
                     model=getattr(decision, "primary_model", None),
                     effort=getattr(decision, "primary_effort", None),
                 )
+            except KeyboardInterrupt:
+                self._agent_idle(
+                    decision.primary_owner
+                )
+                raise
             except Exception:
                 self._agent_error(
                     decision.primary_owner,
@@ -864,7 +869,7 @@ class ExecutionEngine:
                         if proc.returncode != 0
                         else "CLI returned success but produced no repository changes"
                     )
-                    print(f"â†’ Primary failed ({reason}). Escalating once to {fallback}...")
+                    print(f"-> Primary failed ({reason}). Escalating once to {fallback}...")
 
                     # Remove partial/empty primary state before fallback.
                     self._agent_error(
@@ -1022,7 +1027,7 @@ class ExecutionEngine:
                     )
                     continue
 
-                print(f"âœ“ {decision.task_id} committed and merged into {integration_branch}")
+                print(f"[OK] {decision.task_id} committed and merged into {integration_branch}")
 
                 self._agent_idle(
                     command_owner,

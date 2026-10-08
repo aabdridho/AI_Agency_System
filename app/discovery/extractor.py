@@ -44,15 +44,74 @@ class RequirementExtractor:
                 return project_type
         return "unknown"
 
+    def _feature_value(self, prompt: str, keywords: list[str]):
+        text = prompt.lower()
+
+        clauses = re.split(
+            r"[.!?;]|\b(?:tapi|tetapi|namun|but|however|sedangkan)\b",
+            text,
+            flags=re.IGNORECASE,
+        )
+
+        negation_patterns = (
+            r"\bjangan\b",
+            r"\btidak\s+perlu\b",
+            r"\btak\s+perlu\b",
+            r"\bnggak\s+perlu\b",
+            r"\bgak\s+perlu\b",
+            r"\btanpa\b",
+            r"\bno\b",
+            r"\bwithout\b",
+            r"\bdo\s+not\b",
+            r"\bdon't\b",
+        )
+
+        matched_value = None
+
+        for clause in clauses:
+            keyword_found = any(
+                re.search(
+                    rf"\b{re.escape(keyword)}\b",
+                    clause,
+                    flags=re.IGNORECASE,
+                )
+                for keyword in keywords
+            )
+
+            if not keyword_found:
+                continue
+
+            negated = any(
+                re.search(
+                    pattern,
+                    clause,
+                    flags=re.IGNORECASE,
+                )
+                for pattern in negation_patterns
+            )
+
+            matched_value = not negated
+
+        return matched_value
+
     def extract_confirmed(self, prompt: str) -> list[RequirementItem]:
         p = prompt.lower()
         items = []
 
         for key, keywords in FEATURE_KEYWORDS.items():
-            if any(k in p for k in keywords):
+            value = self._feature_value(
+                prompt,
+                keywords,
+            )
+
+            if value is not None:
                 items.append(RequirementItem(
-                    key=key, value=True, status="CONFIRMED",
-                    source="client_prompt", blocking=False, confidence=1.0
+                    key=key,
+                    value=value,
+                    status="CONFIRMED",
+                    source="client_prompt",
+                    blocking=False,
+                    confidence=1.0,
                 ))
 
         for pattern in FOCUS_PATTERNS:

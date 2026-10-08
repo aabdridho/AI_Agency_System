@@ -10,13 +10,20 @@ class InternalResolver:
         if s.returncode!=0 or s.stdout.strip(): raise InternalResolutionError('Safe internal resolution requires a clean Git working tree.')
         b=self._run(['git','branch','--show-current']).stdout.strip()
         if not b.startswith('ai/integration/'): raise InternalResolutionError(f'Safe internal resolution requires ai/integration/* branch; current={b!r}.')
-    def resolve_nextjs_deployment_target_to_vercel(self):
+    def resolve_deployment_target_to_vercel(self):
         self._require_clean_integration_branch(); changed=[]
         for name in ('requirement.md','architecture.md','deployment.md'):
             p=self.repo/'docs'/name
             if not p.exists(): continue
             original=p.read_text(encoding='utf-8',errors='replace'); lines=[]; touched=False
             for line in original.splitlines(keepends=True):
+                if (
+                    name == 'architecture.md'
+                    and line.strip().lower() == '- deployment target'
+                ):
+                    touched = True
+                    continue
+
                 if re.search(r'(?i)deployment(?:_target|\s+target)?',line):
                     new=re.sub(r'(?i)to[_ -]be[_ -]decided(?:[_ -]internally)?|\btbd\b','vercel',line)
                     touched |= new!=line; lines.append(new)
@@ -36,3 +43,7 @@ class InternalResolver:
         if c.returncode!=0:
             self._run(['git','restore','--staged','.']); self._run(['git','restore','--']+rel); raise InternalResolutionError('Failed to commit automatic internal resolution: '+(c.stderr or c.stdout).strip())
         return {'resolution':'deployment_target=vercel','changed_files':sorted(expected),'commit_message':'chore: resolve internal deployment target to Vercel'}
+
+    def resolve_nextjs_deployment_target_to_vercel(self):
+        # Backward-compatible alias for older delivery CLI.
+        return self.resolve_deployment_target_to_vercel()

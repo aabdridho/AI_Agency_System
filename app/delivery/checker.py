@@ -1,5 +1,5 @@
 from __future__ import annotations
-import json,re,shutil,subprocess
+import json,re,shutil,subprocess,sys
 from pathlib import Path
 from .models import ReadinessCheck
 class DeliveryChecker:
@@ -45,8 +45,17 @@ class DeliveryChecker:
         hits=self._decision_placeholders()
         if not hits: return ReadinessCheck(check_id='unresolved_decisions',title='Unresolved project decisions',status='pass',detail='No TBD/to-be-decided markers found in delivery-critical docs.')
         details=', '.join(f"{h['file']}:{h['line']}" for h in hits)
-        if all(h['deployment_related'] for h in hits) and self._is_nextjs_project():
-            return ReadinessCheck(check_id='unresolved_decisions',title='Unresolved project decisions',status='blocker',detail=f'Deployment target is unresolved at {details}.',remediation='Resolve the internal deployment decision before delivery.',blocker_class='AUTO_RESOLVABLE_INTERNAL',auto_resolvable=True,proposed_resolution='Use Vercel as the deployment target for this Next.js project.')
+        if all(h['deployment_related'] for h in hits):
+            return ReadinessCheck(
+                check_id='unresolved_decisions',
+                title='Unresolved project decisions',
+                status='blocker',
+                detail=f'Deployment target is unresolved at {details}.',
+                remediation='Resolve the internal deployment decision before delivery.',
+                blocker_class='AUTO_RESOLVABLE_INTERNAL',
+                auto_resolvable=True,
+                proposed_resolution='Use Vercel as the deployment target under internal agency policy.',
+            )
         return ReadinessCheck(check_id='unresolved_decisions',title='Unresolved project decisions',status='blocker',detail=f'Unresolved delivery-impacting decisions found at {details}.',remediation='Resolve the remaining decisions before delivery.',blocker_class='CLIENT_INPUT_REQUIRED')
     def placeholder_content(self):
         hits=[]
@@ -96,7 +105,7 @@ class DeliveryChecker:
                 for s in ('lint','typecheck','test','build'):
                     if s in scripts: out.append([npm,'test','--','--runInBand'] if s=='test' else [npm,'run',s])
                 return out
-        if (self.repo/'pyproject.toml').exists() and shutil.which('python'): return [['python','-m','pytest','-q']]
+        if (self.repo/'pyproject.toml').exists(): return [[sys.executable,'-m','pytest','-q']]
         return []
     def run_production_validation(self):
         cmds=self.production_commands()
