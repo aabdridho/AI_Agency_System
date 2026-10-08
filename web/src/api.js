@@ -36,6 +36,32 @@ export const analyzeProjectIntake = (projectName, brief, references = []) =>
     }),
   });
 
+export const confirmProjectIntake = (
+  projectName,
+  result,
+  answers,
+) =>
+  req('/api/projects/intake/confirm', {
+    method: 'POST',
+    body: JSON.stringify({
+      project_name: projectName,
+      result,
+      answers,
+    }),
+  });
+
+export const approveProjectIntake = (
+  projectName,
+  result,
+) =>
+  req('/api/projects/intake/approve', {
+    method: 'POST',
+    body: JSON.stringify({
+      project_name: projectName,
+      result,
+    }),
+  });
+
 export const listProjects = () => req('/api/projects');
 export const getProject = (name) => req(`/api/projects/${encodeURIComponent(name)}`);
 export const saveRouting = (name) => req(`/api/projects/${encodeURIComponent(name)}/route`, { method: 'POST' });

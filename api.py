@@ -45,6 +45,26 @@ class ProjectIntakeResponse(BaseModel):
     discovery: DiscoveryResult
 
 
+class ProjectConfirmationRequest(BaseModel):
+    project_name: str = Field(min_length=1, max_length=100)
+    result: DiscoveryResult
+    answers: dict[
+        str,
+        str | bool | int | float | list[str],
+    ]
+
+
+class ProjectApprovalRequest(BaseModel):
+    project_name: str = Field(min_length=1, max_length=100)
+    result: DiscoveryResult
+
+
+class ProjectApprovalResponse(BaseModel):
+    project_name: str
+    discovery: DiscoveryResult
+    generated_docs: list[str]
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "version": "0.15.0"}
@@ -106,6 +126,76 @@ def project_intake(
     return ProjectIntakeResponse(
         project_name=project_name,
         discovery=result,
+    )
+
+
+@app.post(
+    "/api/projects/intake/confirm",
+    response_model=ProjectIntakeResponse,
+)
+def confirm_project_intake(
+    payload: ProjectConfirmationRequest,
+):
+    project_name = payload.project_name.strip()
+
+    if not valid_name(project_name):
+        raise HTTPException(
+            422,
+            "Nama project tidak valid.",
+        )
+
+    result = payload.result
+
+    for key, value in payload.answers.items():
+        result = gate.promote_confirmed(
+            result,
+            key,
+            value,
+        )
+
+    return ProjectIntakeResponse(
+        project_name=project_name,
+        discovery=result,
+    )
+
+
+@app.post(
+    "/api/projects/intake/approve",
+    response_model=ProjectApprovalResponse,
+)
+def approve_project_intake(
+    payload: ProjectApprovalRequest,
+    orchestrator: ProjectOrchestrator = Depends(get_orchestrator),
+):
+    project_name = payload.project_name.strip()
+
+    if not valid_name(project_name):
+        raise HTTPException(
+            422,
+            "Nama project tidak valid.",
+        )
+
+    try:
+        approved = orchestrator.approve_discovery(
+            payload.result,
+        )
+
+        generated = orchestrator.generate_documentation(
+            project_name,
+            approved,
+        )
+    except ValueError as exc:
+        raise HTTPException(409, str(exc))
+    except FileExistsError as exc:
+        raise HTTPException(409, str(exc))
+
+    return ProjectApprovalResponse(
+        project_name=project_name,
+        discovery=approved,
+        generated_docs=[
+            str(path.name)
+            for path in generated
+        ],
     )
 
 

@@ -87,7 +87,33 @@
       <p id="intakeSummary" class="mono-sm"></p>
       <div id="intakeQuestionWrap" hidden>
         <h3>Butuh konfirmasi</h3>
-        <ol id="intakeQuestions"></ol>
+        <div id="intakeQuestions" class="intakequestions"></div>
+
+        <div class="intakeconfirmactions">
+          <button
+            class="go primary"
+            id="intakeConfirm"
+            type="button"
+            data-lock
+          >
+            Simpan Jawaban
+          </button>
+        </div>
+      </div>
+
+      <div id="intakeApprovalWrap" class="intakeapproval" hidden>
+        <p class="mono-sm">
+          Discovery lengkap dan siap dibuat menjadi requirement project.
+        </p>
+
+        <button
+          class="go primary"
+          id="intakeApprove"
+          type="button"
+          data-lock
+        >
+          Approve Requirement
+        </button>
       </div>
     </div>
   </section>

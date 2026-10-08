@@ -351,3 +351,55 @@ td.mono{white-space:nowrap}
     grid-row:auto;
   }
 }
+
+
+/* ---------- V0.16 discovery confirmation ---------- */
+
+.intakequestions{
+  display:grid;
+  gap:10px;
+}
+
+.intakequestion{
+  display:grid;
+  gap:5px;
+}
+
+.intakequestion>span{
+  font-family:var(--mono);
+  font-size:.74rem;
+  color:var(--fg);
+}
+
+.intakequestion textarea{
+  width:100%;
+  min-width:0;
+  box-sizing:border-box;
+  resize:vertical;
+  font-family:var(--mono);
+  font-size:.76rem;
+  line-height:1.45;
+  background:var(--panel2);
+  color:var(--fg);
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:8px 10px;
+}
+
+.intakeconfirmactions{
+  display:flex;
+  justify-content:flex-end;
+  margin-top:10px;
+}
+
+.intakeapproval{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-top:12px;
+  padding:12px;
+  border:1px solid var(--pass);
+  border-radius:10px;
+}

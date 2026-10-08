@@ -115,6 +115,16 @@ function onBillingChanged() {
 
 // ---------- local project intake ----------
 
+let intakeDiscovery = null;
+let intakeProjectName = '';
+
+function blockingRequirements(result) {
+  return [
+    ...(result.inferred ?? []).filter((item) => item.blocking),
+    ...(result.unknown ?? []).filter((item) => item.blocking),
+  ];
+}
+
 function intakeReferences() {
   return $('intakeReferences').value
     .split(/\r?\n/)
@@ -125,6 +135,10 @@ function intakeReferences() {
 function renderIntakeResult(payload) {
   const result = payload.discovery;
   const questions = result.questions ?? [];
+  const blockers = blockingRequirements(result);
+
+  intakeDiscovery = result;
+  intakeProjectName = payload.project_name;
 
   $('intakeResult').hidden = false;
 
@@ -142,22 +156,171 @@ function renderIntakeResult(payload) {
 
   const wrap = $('intakeQuestionWrap');
   const list = $('intakeQuestions');
+  const approval = $('intakeApprovalWrap');
 
   list.replaceChildren();
 
-  if (!questions.length) {
-    wrap.hidden = true;
+  blockers.forEach((item, index) => {
+    const field = document.createElement('label');
+    field.className = 'intakequestion';
+
+    const title = document.createElement('span');
+    title.textContent =
+      questions[index] ??
+      item.key.replaceAll('_', ' ');
+
+    const input = document.createElement('textarea');
+    input.rows = 2;
+    input.dataset.requirementKey = item.key;
+    input.placeholder = `Jawaban untuk ${item.key}`;
+
+    if (
+      item.value !== null &&
+      item.value !== undefined
+    ) {
+      input.value = Array.isArray(item.value)
+        ? item.value.join(', ')
+        : String(item.value);
+    }
+
+    field.append(title, input);
+    list.appendChild(field);
+  });
+
+  wrap.hidden =
+    result.ready_for_final_approval ||
+    blockers.length === 0;
+
+  approval.hidden =
+    !result.ready_for_final_approval;
+}
+
+async function confirmProjectIntake() {
+  if (
+    !online ||
+    store.running ||
+    !intakeDiscovery ||
+    !intakeProjectName
+  ) {
     return;
   }
 
-  questions.forEach((question) => {
-    const li = document.createElement('li');
-    li.textContent = question;
-    list.appendChild(li);
-  });
+  const inputs = [
+    ...document.querySelectorAll(
+      '#intakeQuestions [data-requirement-key]',
+    ),
+  ];
 
-  wrap.hidden = false;
+  const answers = {};
+
+  for (const input of inputs) {
+    const value = input.value.trim();
+
+    if (!value) {
+      input.focus();
+      $('intakeState').textContent =
+        'semua jawaban wajib diisi';
+      return;
+    }
+
+    answers[input.dataset.requirementKey] = value;
+  }
+
+  $('intakeConfirm').disabled = true;
+  $('intakeState').textContent =
+    'menyimpan konfirmasi…';
+
+  try {
+    const payload = await api.confirmProjectIntake(
+      intakeProjectName,
+      intakeDiscovery,
+      answers,
+    );
+
+    renderIntakeResult(payload);
+
+    $('intakeState').textContent =
+      payload.discovery.ready_for_final_approval
+        ? 'discovery lengkap · menunggu approval'
+        : 'masih membutuhkan konfirmasi';
+
+    await line(
+      'discovery',
+      payload.discovery.ready_for_final_approval
+        ? 't-pass'
+        : 't-warn',
+      payload.discovery.ready_for_final_approval
+        ? 'semua blocker discovery selesai'
+        : 'konfirmasi disimpan',
+    );
+  } catch (e) {
+    $('intakeState').textContent =
+      `gagal: ${e.message}`;
+
+    await line(
+      'discovery',
+      't-fail',
+      `konfirmasi gagal: ${e.message}`,
+    );
+  } finally {
+    $('intakeConfirm').disabled = false;
+  }
 }
+
+
+async function approveProjectIntake() {
+  if (
+    !online ||
+    store.running ||
+    !intakeDiscovery ||
+    !intakeProjectName
+  ) {
+    return;
+  }
+
+  if (!intakeDiscovery.ready_for_final_approval) {
+    $('intakeState').textContent =
+      'discovery belum siap approval';
+    return;
+  }
+
+  $('intakeApprove').disabled = true;
+  $('intakeState').textContent =
+    'membuat dokumentasi project…';
+
+  try {
+    const payload = await api.approveProjectIntake(
+      intakeProjectName,
+      intakeDiscovery,
+    );
+
+    intakeDiscovery = payload.discovery;
+
+    $('intakeState').textContent =
+      `approved · ${payload.generated_docs.length} dokumen dibuat`;
+
+    await line(
+      'documentation',
+      't-pass',
+      `project ${payload.project_name} dibuat · ` +
+      `${payload.generated_docs.join(', ')}`,
+    );
+
+    await enterLive(payload.project_name);
+  } catch (e) {
+    $('intakeState').textContent =
+      `gagal: ${e.message}`;
+
+    await line(
+      'documentation',
+      't-fail',
+      `approval gagal: ${e.message}`,
+    );
+  } finally {
+    $('intakeApprove').disabled = false;
+  }
+}
+
 
 async function submitProjectIntake(event) {
   event.preventDefault();
@@ -235,7 +398,7 @@ async function enterSim() {
   renderSimGauges();
 }
 
-async function enterLive() {
+async function enterLive(preferredProject = '') {
   if (!online) return;
   showMode('live');
   initMap(LIVE);
@@ -254,10 +417,21 @@ async function enterLive() {
   projects.forEach((p) => {
     const o = document.createElement('option');
     o.value = p.name;
-    const last = [...p.stages].reverse().find((s) => s.status !== 'todo');
-    o.textContent = `${p.name}${last ? ` · ${last.key} ${last.status}` : ''}`;
+    const last = [...p.stages].reverse().find(
+      (stage) => stage.status !== 'todo',
+    );
+    o.textContent =
+      `${p.name}${last ? ` · ${last.key} ${last.status}` : ''}`;
     sel.appendChild(o);
   });
+
+  if (
+    preferredProject &&
+    projects.some((project) => project.name === preferredProject)
+  ) {
+    sel.value = preferredProject;
+  }
+
   await loadProject(sel.value);
 }
 
@@ -287,6 +461,16 @@ function wire() {
   $('intakeForm')?.addEventListener(
     'submit',
     submitProjectIntake,
+  );
+
+  $('intakeConfirm')?.addEventListener(
+    'click',
+    confirmProjectIntake,
+  );
+
+  $('intakeApprove')?.addEventListener(
+    'click',
+    approveProjectIntake,
   );
   $('modeSim').addEventListener('click', () => { if (!store.running && mode !== 'sim') enterSim(); });
   $('modeLive').addEventListener('click', () => { if (!store.running && mode !== 'live') enterLive(); });
