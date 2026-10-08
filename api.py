@@ -13,7 +13,7 @@ from app.workspace import OUTPUT_ROOT, SYSTEM_ROOT
 from app.agents.router import router as agents_router
 from app.execution.billing import BillingPolicy
 
-app = FastAPI(title="AI Agency System API", version="0.14.0")
+app = FastAPI(title="AI Agency System API", version="0.15.0")
 app.include_router(agents_router)
 engine = RequirementDiscoveryEngine()
 gate = ConfirmationGate()
@@ -34,7 +34,7 @@ class ConfirmationRequest(BaseModel):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "version": "0.14.0"}
+    return {"status": "ok", "version": "0.15.0"}
 
 
 @app.post("/discover", response_model=DiscoveryResult)

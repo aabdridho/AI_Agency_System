@@ -1,4 +1,5 @@
 from __future__ import annotations
+from app.command_resolver import resolve_node_cli
 import json, shutil, subprocess
 from pathlib import Path
 from .models import DeploymentCommand, DeploymentPlan
@@ -57,7 +58,7 @@ class DeploymentPlanner:
         if provider == "vercel":
             if not self._is_nextjs():
                 blockers.append("Vercel auto-plan currently supports the validated Next.js path only.")
-            npx = "npx.cmd" if shutil.which("npx.cmd") else ("npx" if shutil.which("npx") else None)
+            npx = resolve_node_cli("npx")
             if not npx:
                 blockers.append("npx is unavailable; cannot invoke Vercel CLI.")
             else:

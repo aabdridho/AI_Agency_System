@@ -181,6 +181,70 @@ class GitOps:
         else:
             self._run(["git", "checkout", "-b", branch])
 
+    def working_tree_clean(self) -> bool:
+        proc = self._run(["git", "status", "--porcelain"])
+        if proc.returncode != 0:
+            raise RuntimeError(
+                "Unable to inspect Git working tree during recovery."
+            )
+        return not proc.stdout.strip()
+
+    def recover_interrupted_task(
+        self,
+        active_branch: str,
+        integration_branch: str,
+    ) -> None:
+        """
+        Recover only transient work from an interrupted active task.
+
+        The integration branch is never reset. The active task working tree is
+        discarded, then execution returns to the existing integration branch.
+        """
+        current = self.current_branch()
+
+        if current != active_branch:
+            raise RuntimeError(
+                "Interrupted-task recovery refused because the current branch "
+                f"is {current!r}, expected {active_branch!r}."
+            )
+
+        if not self.branch_exists(integration_branch):
+            raise RuntimeError(
+                "Interrupted-task recovery refused because integration branch "
+                f"{integration_branch!r} does not exist."
+            )
+
+        reset = self._run(["git", "reset", "--hard", "HEAD"])
+        if reset.returncode != 0:
+            raise RuntimeError(
+                "Failed to discard tracked partial task changes during "
+                "interrupt recovery."
+            )
+
+        clean = self._run(["git", "clean", "-fd"])
+        if clean.returncode != 0:
+            raise RuntimeError(
+                "Failed to discard untracked partial task changes during "
+                "interrupt recovery."
+            )
+
+        switch = self._run(["git", "switch", integration_branch])
+        if switch.returncode != 0:
+            raise RuntimeError(
+                "Failed to return to integration branch during interrupt "
+                "recovery."
+            )
+
+        if self.current_branch() != integration_branch:
+            raise RuntimeError(
+                "Interrupt recovery completed on an unexpected Git branch."
+            )
+
+        if not self.working_tree_clean():
+            raise RuntimeError(
+                "Interrupt recovery left the integration working tree dirty."
+            )
+
     def reset_hard_to(self, ref: str):
         self._run(["git", "reset", "--hard", ref])
         self._run(["git", "clean", "-fd"])

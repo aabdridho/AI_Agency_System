@@ -41,6 +41,28 @@ STAGES = (
 )
 
 
+def _delivery_allows_auto_resolution(checks) -> bool:
+    """Auto-resolve only when no higher-priority blocker exists."""
+    blocker_classes = {
+        check.blocker_class
+        for check in checks
+        if check.status == "blocker"
+    }
+
+    has_auto = any(
+        check.status == "blocker"
+        and check.blocker_class == "AUTO_RESOLVABLE_INTERNAL"
+        and check.auto_resolvable
+        for check in checks
+    )
+
+    return (
+        has_auto
+        and "HARD_TECHNICAL_BLOCKER" not in blocker_classes
+        and "CLIENT_INPUT_REQUIRED" not in blocker_classes
+    )
+
+
 def _read_json(
     path: Path,
 ) -> dict[str, Any] | None:
@@ -733,7 +755,7 @@ class ProjectOrchestrator:
             )
         ]
 
-        if auto_blockers and not hard_blockers:
+        if _delivery_allows_auto_resolution(report.checks):
             resolver = InternalResolver(root)
 
             try:
