@@ -12,6 +12,7 @@ from app.execution.git_ops import GitOps
 from app.execution.models import ExecutionRecord, ExecutionReport
 from app.execution.prompt_builder import TaskPromptBuilder
 from app.execution.qa import DeterministicQA
+from app.execution.usage import UsageLedger, parse_usage
 from app.routing.models import RoutingPlan
 
 
@@ -25,6 +26,7 @@ class ExecutionEngine:
     def __init__(
         self,
         agent_registry: AgentRegistry | None = None,
+        usage_ledger: UsageLedger | None = None,
     ):
         self.prompt_builder = TaskPromptBuilder()
         self.adapters = {
@@ -38,6 +40,39 @@ class ExecutionEngine:
             if agent_registry is not None
             else default_agent_registry
         )
+        self.usage_ledger = usage_ledger
+
+    def _record_usage(
+        self,
+        *,
+        proc,
+        owner: str,
+        project_name: str,
+        task_id: str,
+        phase: str,
+    ) -> None:
+        if self.usage_ledger is None:
+            return
+
+        try:
+            metrics = parse_usage(
+                owner,
+                getattr(proc, "stdout", "") or "",
+            )
+
+            if metrics is None:
+                return
+
+            self.usage_ledger.append(
+                project_name=project_name,
+                task_id=task_id,
+                owner=owner,
+                phase=phase,
+                metrics=metrics,
+            )
+        except Exception:
+            # Observability must never break execution.
+            return
 
     def _agent_id(self, owner: str) -> str | None:
         return self.OWNER_AGENT_IDS.get(owner)
@@ -310,6 +345,14 @@ class ExecutionEngine:
                     phase=f"qa-repair-{attempt}",
                 )
                 raise
+
+            self._record_usage(
+                proc=proc,
+                owner=owner,
+                project_name=project_name,
+                task_id=task_id,
+                phase=f"qa-repair-{attempt}",
+            )
 
             last_proc = proc
             used_owner = owner
@@ -711,6 +754,14 @@ class ExecutionEngine:
                 )
                 raise
 
+            self._record_usage(
+                proc=proc,
+                owner=decision.primary_owner,
+                project_name=plan.project_name,
+                task_id=decision.task_id,
+                phase="implementation",
+            )
+
             final_proc = proc
             escalated = False
             escalation_owner = None
@@ -772,6 +823,14 @@ class ExecutionEngine:
                             phase="fallback",
                         )
                         raise
+
+                    self._record_usage(
+                        proc=final_proc,
+                        owner=fallback,
+                        project_name=plan.project_name,
+                        task_id=decision.task_id,
+                        phase="fallback",
+                    )
 
                     escalated = True
                     escalation_owner = fallback

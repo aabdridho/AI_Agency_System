@@ -68,6 +68,8 @@ class ClaudeCodeAdapter(BaseAdapter):
             "acceptEdits",
             "--permission-prompts",
             "none",
+            "--output-format",
+            "json",
             prompt,
         ]
 
@@ -82,5 +84,6 @@ class CodexAdapter(BaseAdapter):
             "codex",
             "exec",
             "--approve-for-me",
+            "--json",
             prompt,
         ]
