@@ -1,6 +1,66 @@
-from pathlib import Path
+﻿from pathlib import Path
+
 
 class TaskPromptBuilder:
+    FRONTEND_HINTS = (
+        "frontend",
+        "ui",
+        "ux",
+        "page",
+        "component",
+        "layout",
+        "responsive",
+        "css",
+        "style",
+        "hero",
+        "section",
+        "landing page",
+        "website",
+        "visual",
+    )
+
+    BACKEND_HINTS = (
+        "backend",
+        "api",
+        "server",
+        "database",
+        "db",
+        "auth",
+        "authentication",
+        "endpoint",
+        "route",
+        "webhook",
+        "submission",
+        "submit",
+        "contact form",
+    )
+
+    def _relevant_docs(self, task_text: str) -> list[str]:
+        text = task_text.lower()
+
+        frontend = any(hint in text for hint in self.FRONTEND_HINTS)
+        backend = any(hint in text for hint in self.BACKEND_HINTS)
+
+        docs = [
+            "requirement.md",
+            "architecture.md",
+        ]
+
+        if frontend:
+            docs.append("frontend.md")
+
+        if backend:
+            docs.append("backend.md")
+
+        # Ambiguous implementation work gets both domain documents.
+        if not frontend and not backend:
+            docs.extend([
+                "frontend.md",
+                "backend.md",
+            ])
+
+        return docs
+
     def build(self, project_root: str | Path, task_text: str) -> str:
         root = Path(project_root)
         docs = root / "docs"
@@ -13,12 +73,16 @@ class TaskPromptBuilder:
             "",
         ]
 
-        for name in ["requirement.md", "task.md", "architecture.md", "frontend.md", "backend.md"]:
+        for name in self._relevant_docs(task_text):
             path = docs / name
+
             if path.exists():
                 pieces += [
                     f"--- {name} ---",
-                    path.read_text(encoding="utf-8"),
+                    path.read_text(
+                        encoding="utf-8",
+                        errors="replace",
+                    ),
                     "",
                 ]
 
@@ -36,4 +100,5 @@ class TaskPromptBuilder:
             "- Respect project documentation as source of truth.",
             "- Do not modify operational AI logs.",
         ]
+
         return "\n".join(pieces)
