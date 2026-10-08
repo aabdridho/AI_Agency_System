@@ -12,7 +12,7 @@ from app.execution.usage import UsageMetrics, UsageRecord
 MILLION = Decimal("1000000")
 ZERO = Decimal("0")
 
-PRICING_VERSION = "2026-10-08"
+PRICING_VERSION = "2026-10-09"
 
 # Standard list prices, USD per 1M tokens.
 #
@@ -50,10 +50,10 @@ PRICE_REGISTRY = {
     "claude-sonnet-5-5": {
         "provider": "anthropic",
         "input": Decimal("2.00"),
-        "cached_input": Decimal("0.20"),
+        "cached_input": Decimal("0.10"),
         "cache_write": Decimal("2.50"),
         "output": Decimal("10.00"),
-        "source": "anthropic_standard_list",
+        "source": "anthropic_standard_list_2026_10_07",
     },
     "claude-opus-5-5": {
         "provider": "anthropic",
