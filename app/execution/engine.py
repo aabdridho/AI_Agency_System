@@ -399,6 +399,22 @@ class ExecutionEngine:
                     model=repair_model,
                     effort=repair_effort,
                 )
+            except KeyboardInterrupt:
+                self._agent_idle(owner)
+
+                try:
+                    git.recover_interrupted_task(
+                        repair_branch,
+                        integration_branch,
+                    )
+                except Exception as recovery_exc:
+                    raise RuntimeError(
+                        "QA repair was interrupted and deterministic Git "
+                        "recovery failed: "
+                        f"{recovery_exc}"
+                    ) from recovery_exc
+
+                raise
             except Exception:
                 self._agent_error(
                     owner,
@@ -824,6 +840,19 @@ class ExecutionEngine:
                 self._agent_idle(
                     decision.primary_owner
                 )
+
+                try:
+                    git.recover_interrupted_task(
+                        task_branch,
+                        integration_branch,
+                    )
+                except Exception as recovery_exc:
+                    raise RuntimeError(
+                        "Execution was interrupted and deterministic Git "
+                        "recovery failed: "
+                        f"{recovery_exc}"
+                    ) from recovery_exc
+
                 raise
             except Exception:
                 self._agent_error(
@@ -900,6 +929,25 @@ class ExecutionEngine:
                             model=getattr(decision, "fallback_model", None),
                             effort=getattr(decision, "fallback_effort", None),
                         )
+                    except KeyboardInterrupt:
+                        self._agent_idle(fallback)
+                        self._agent_idle(
+                            decision.primary_owner
+                        )
+
+                        try:
+                            git.recover_interrupted_task(
+                                task_branch,
+                                integration_branch,
+                            )
+                        except Exception as recovery_exc:
+                            raise RuntimeError(
+                                "Fallback execution was interrupted and "
+                                "deterministic Git recovery failed: "
+                                f"{recovery_exc}"
+                            ) from recovery_exc
+
+                        raise
                     except Exception:
                         self._agent_error(
                             fallback,
