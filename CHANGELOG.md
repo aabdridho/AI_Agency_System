@@ -1,3 +1,30 @@
+﻿# Changelog
+
+## V0.14 - Project Orchestrator
+
+- Added agency.py as the primary project orchestration entry point.
+- Added persistent resumable orchestration state under runtime_data/orchestration/<project>/state.json.
+- Integrated discovery, documentation, GOAT routing, execution, deterministic QA, delivery, economics, and deployment approval.
+- Added explicit approval before real model execution.
+- Preserved explicit approval before production deployment.
+- Added orchestration-aware Control Room stages including economics.
+- Added safe internal deployment-target auto-resolution.
+- Added requirement-gate enforcement before routing and execution.
+- Added negation-aware discovery and display-only contact normalization.
+- Prevented display-only email contact from implying backend email delivery.
+- Added interrupt cleanup and Windows execution hardening.
+- Unified release version to 0.14.0.
+
+## V0.13 - Observability, Cost and Billing
+
+- Added token usage capture and model attribution.
+- Added GOAT runtime model and effort configuration.
+- Added equivalent provider/model list-cost calculation.
+- Added estimated counterfactual GOAT savings.
+- Added commercial billing summaries.
+- Preserved the distinction between equivalent/list-price cost and actual provider cash cost.
+- Added economics data to the Control Room.
+
 ## V0.9 - Controlled Deployment & Handoff Layer
 
 - Added deployment guard requiring a `READY` V0.8 delivery report.
@@ -10,9 +37,8 @@
 - V0.9 never merges or pushes `main`/`master` automatically.
 
 
-# Changelog
 
-## V0.8 — Delivery / Production Readiness Layer
+## V0.8 - Delivery / Production Readiness Layer
 
 
 ### V0.8 client-input packet hardening
@@ -31,7 +57,7 @@
 - V0.8 intentionally does not deploy, push, or tag automatically.
 
 
-## V0.7 — Task-aware deterministic QA
+## V0.7 - Task-aware deterministic QA
 
 ### V0.7 audit precision hardening
 - Requirements audit no longer treats QA-like tasks such as `Validate submission flow end-to-end` as unfinished implementation merely because they appear before the `## QA` heading.
@@ -66,7 +92,7 @@
 - Deterministic QA and Git subprocess output are decoded as UTF-8 with replacement on Windows.
 
 
-## V0.6 — Execution Layer
+## V0.6 €” Execution Layer
 
 ### Safe resume after interrupted execution
 - Real execution automatically skips implementation tasks whose verified `TASK-*` commit is already contained in the integration branch.
@@ -145,4 +171,4 @@
 ### V0.8 Windows console compatibility
 
 - Replaced em-dash characters in generated Markdown headings with ASCII hyphens.
-- This prevents mojibake such as `â€”` when viewing generated reports with Windows PowerShell defaults.
+- This prevents mojibake such as `¢‚¬€` when viewing generated reports with Windows PowerShell defaults.

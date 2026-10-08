@@ -1,106 +1,110 @@
-# AI Agency Router V0.8
+﻿# AI Agency System V0.14
 
-V0.8 adds the execution layer on top of the stable discovery, documentation,
-and routing workflow.
+AI Agency System is a local-first AI project orchestration system for turning client briefs into approved requirements, documentation, GOAT-routed tasks, implementation, deterministic QA, delivery readiness, economics, and controlled deployment approval.
 
-## Test
+## Current Release
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-pip install -e .
-pytest -q
-```
+- Version: `0.14.0`
+- Git tag: `v0.14`
+- Primary CLI: `python agency.py`
+- Runtime state: `runtime_data/`
+- Production deployment requires explicit approval.
 
-## Run execution layer
+## Run
 
 ```powershell
-python execute_project.py
+python agency.py
 ```
 
-Start with **Dry-run**. This validates which owner, branch and command would be
-used without calling Claude Code or Codex.
-
-For real execution, the local machine must provide the relevant CLI binaries:
-
-```powershell
-claude --version
-codex --version
-```
-
-V0.8 never automatically pushes to `main`.
-
-
-## Real execution branch model
-
-Real execution does not run every task from the same base commit.
+## V0.14 Pipeline
 
 ```text
-main / existing baseline
-        |
-        v
-ai/integration/<project>
-        |
-        +-- ai/task-001-* -- execute -- commit -- merge back
-        |
-        +-- ai/task-002-* -- execute -- commit -- merge back
-        |
-        +-- ai/task-003-* -- ...
+discovery
+-> documentation
+-> routing
+-> execution
+-> delivery
+-> economics
+-> deployment
 ```
 
-Therefore later tasks can see the successful output of earlier tasks while each task
-still has its own isolated branch.
+Resumable orchestration state is stored under:
 
-The integration branch is intentionally separate from `main`/`master`.
+`runtime_data/orchestration/<project>/state.json`
 
+Real model execution requires explicit approval. Production deployment also remains approval-gated.
 
-## QA behavior
+## Requirement Gate
 
-V0.8 never treats "nothing was checked" as a successful QA result.
+Development cannot begin until the final requirement baseline is client-approved and ready for development.
 
-If no deterministic command is available, the QA task fails with a clear
-`no deterministic QA command detected` message. For Node projects, available
-`lint`, `test`, and `build` scripts are detected from `package.json`.
+Discovery distinguishes `CONFIRMED`, `INFERRED`, `UNKNOWN`, `INTERNAL_DECISION`, and `PROPOSED`.
 
-Real Claude/Codex execution streams progress live to the terminal.
+## GOAT Routing
 
+Each task has one primary model owner. Fallback is bounded to one escalation after an explicit execution failure or qualifying risk condition.
 
-## V0.8 — Task-aware QA
+## Execution and QA
 
-V0.8 stops treating every QA task as the same lint/test/build job. QA tasks are mapped to specialized deterministic profiles for submission flow, requirements, engineering validation, responsive evidence, and scope control. Failed profiles remain compatible with the bounded automatic repair loop introduced in V0.6.
+Implementation uses `ai/integration/<project>` with isolated `ai/task-*` branches.
 
+Deterministic QA fails closed when no valid check exists. Windows-controlled Node execution prefers `npm.cmd`.
 
-## V0.8 — Delivery / Production Readiness Layer
+## Delivery
 
-Run `python prepare_delivery.py` only after execution/QA is green. V0.8 does not deploy automatically. It creates a deterministic delivery gate covering Git cleanliness, requirement approval, unresolved delivery decisions, placeholder client content, tracked secret files, environment-variable documentation, deployment documentation, and production validation. Reports are stored outside the client repository under `runtime_data/delivery/<project>/`.
+Delivery validates Git cleanliness, approved requirements, unresolved decisions, placeholders, secrets, environment documentation, deployment documentation, and production validation.
 
-### Blocker ownership and safe internal resolution
+Blocker classes:
 
-V0.8 classifies delivery blockers as `AUTO_RESOLVABLE_INTERNAL`, `CLIENT_INPUT_REQUIRED`, or `HARD_TECHNICAL_BLOCKER`. For a Next.js project whose only unresolved delivery decision is the deployment target, V0.8 may propose Vercel. The CLI requires explicit confirmation, edits only deployment-target placeholders in delivery-critical docs, commits on the current `ai/integration/*` branch, then reruns readiness. Client biography/contact/project content is never auto-filled.
+```text
+AUTO_RESOLVABLE_INTERNAL
+CLIENT_INPUT_REQUIRED
+HARD_TECHNICAL_BLOCKER
+```
 
+Client-owned facts must never be invented automatically.
 
-### Client Input Request Packet
+## Economics
 
-When readiness is blocked by `CLIENT_INPUT_REQUIRED`, V0.8 now generates:
+V0.13 introduced usage telemetry, model attribution, equivalent/list-price cost, estimated GOAT counterfactual savings, and billing support.
 
-`runtime_data/delivery/<project>/client_input_request.md`
+V0.14 integrates economics directly into project orchestration.
 
-The packet converts detected client-owned placeholders into a concise request list by section (for example Hero, About, Contact, Experience, Projects, Skills, and Certifications). It does not modify the project repository and does not infer or invent client facts. When all client-input blockers are gone, stale request packets are removed automatically.
+Token usage, equivalent/list-price cost, and actual provider cash cost are separate concepts.
 
+Equivalent cost must not be presented as an actual provider charge when billing evidence is unavailable.
 
-## V0.9 - Controlled Deployment & Handoff Layer
+## Control Room
 
-Run `python deploy_project.py` only after V0.8 reports `READY`.
+For V0.14 projects, orchestration state is authoritative for pipeline-stage status.
 
-V0.9 adds a fail-closed deployment guard, deterministic deployment plan generation, explicit approval before any remote production deployment, and handoff reports. The first supported deployment path is validated Next.js -> Vercel.
+Stages: `discovery`, `documentation`, `routing`, `execution`, `delivery`, `economics`, `deployment`.
 
-Safety rules:
+## Repository Boundaries
 
-- A non-READY V0.8 delivery report blocks deployment.
-- The project must be clean and on `ai/integration/*`.
-- V0.9 does not merge or push `main`/`master`.
-- `dry-run` is the default mode.
-- Remote production deployment requires typing `DEPLOY`.
-- Handoff reports contain environment variable names only, never values.
-- Operational reports remain under `runtime_data/`, outside the client project repository.
+Operational routing, execution, delivery, deployment, handoff, usage, and orchestration data remain under `runtime_data/` and outside client repositories.
+
+## Release History
+
+### V0.14 - Project Orchestrator
+
+- Stateful and resumable project orchestration
+- `agency.py` primary entry point
+- Explicit execution and deployment approval gates
+- Integrated discovery through economics and deployment approval
+- Real Control Room orchestration state
+- Delivery internal auto-resolution hardening
+- Discovery negation and display-only contact fixes
+- Windows and interrupt resilience hardening
+- Version consistency `0.14.0`
+
+### V0.13 - Observability, Cost and Billing
+
+- Token usage and model attribution
+- GOAT runtime configuration
+- Equivalent/list-price cost engine
+- Estimated GOAT savings
+- Commercial billing summaries
+- Economics surfaces for Control Room
+
+Detailed historical release notes are preserved in `CHANGELOG.md`.
