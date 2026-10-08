@@ -1,5 +1,12 @@
 from pathlib import Path
 
+from app.agents import (
+    AgentHeartbeat,
+    AgentRegistry,
+    AgentStateUpdate,
+    AgentStatus,
+    registry as default_agent_registry,
+)
 from app.execution.adapters import ClaudeCodeAdapter, CodexAdapter
 from app.execution.git_ops import GitOps
 from app.execution.models import ExecutionRecord, ExecutionReport
@@ -9,7 +16,16 @@ from app.routing.models import RoutingPlan
 
 
 class ExecutionEngine:
-    def __init__(self):
+    OWNER_AGENT_IDS = {
+        "codex": "codex",
+        "claude_code": "claude-code",
+        "deterministic_qa": "deterministic-qa",
+    }
+
+    def __init__(
+        self,
+        agent_registry: AgentRegistry | None = None,
+    ):
         self.prompt_builder = TaskPromptBuilder()
         self.adapters = {
             "claude_code": ClaudeCodeAdapter(),
@@ -17,13 +33,159 @@ class ExecutionEngine:
         }
         self.qa = DeterministicQA()
 
+        self.agent_registry = (
+            agent_registry
+            if agent_registry is not None
+            else default_agent_registry
+        )
+
+    def _agent_id(self, owner: str) -> str | None:
+        return self.OWNER_AGENT_IDS.get(owner)
+
+    def _agent_session(
+        self,
+        project_name: str,
+        task_id: str,
+        phase: str = "task",
+    ) -> str:
+        return f"{phase}:{project_name}:{task_id}"
+
+    def _set_agent_state(
+        self,
+        owner: str,
+        status: AgentStatus,
+        *,
+        project_name: str | None = None,
+        task_id: str | None = None,
+        session_id: str | None = None,
+    ) -> None:
+        agent_id = self._agent_id(owner)
+
+        if not agent_id:
+            return
+
+        try:
+            self.agent_registry.update_state(
+                agent_id,
+                AgentStateUpdate(
+                    status=status,
+                    current_task=task_id,
+                    project=project_name,
+                    session_id=session_id,
+                ),
+            )
+        except Exception:
+            return
+
+    def _agent_start(
+        self,
+        owner: str,
+        *,
+        project_name: str,
+        task_id: str,
+        phase: str = "task",
+    ) -> None:
+        session_id = self._agent_session(
+            project_name,
+            task_id,
+            phase,
+        )
+
+        self._set_agent_state(
+            owner,
+            AgentStatus.RUNNING,
+            project_name=project_name,
+            task_id=task_id,
+            session_id=session_id,
+        )
+
+        agent_id = self._agent_id(owner)
+
+        if not agent_id:
+            return
+
+        try:
+            self.agent_registry.heartbeat(
+                agent_id,
+                AgentHeartbeat(
+                    current_task=task_id,
+                    project=project_name,
+                    session_id=session_id,
+                ),
+            )
+        except Exception:
+            return
+
+    def _agent_waiting(
+        self,
+        owner: str,
+        *,
+        project_name: str,
+        task_id: str,
+        phase: str = "task",
+    ) -> None:
+        self._set_agent_state(
+            owner,
+            AgentStatus.WAITING,
+            project_name=project_name,
+            task_id=task_id,
+            session_id=self._agent_session(
+                project_name,
+                task_id,
+                phase,
+            ),
+        )
+
+    def _agent_error(
+        self,
+        owner: str,
+        *,
+        project_name: str,
+        task_id: str,
+        phase: str = "task",
+    ) -> None:
+        self._set_agent_state(
+            owner,
+            AgentStatus.ERROR,
+            project_name=project_name,
+            task_id=task_id,
+            session_id=self._agent_session(
+                project_name,
+                task_id,
+                phase,
+            ),
+        )
+
+    def _agent_idle(self, owner: str) -> None:
+        self._set_agent_state(
+            owner,
+            AgentStatus.IDLE,
+        )
+
     def _command_preview(self, owner: str, prompt: str) -> str:
         if owner == "deterministic_qa":
             return "deterministic QA commands detected from repository"
         adapter = self.adapters.get(owner)
+
         if not adapter:
             return f"unsupported owner: {owner}"
-        cmd = adapter.build_command(prompt)
+
+        build_command = getattr(
+            adapter,
+            "build_command",
+            None,
+        )
+
+        if not callable(build_command):
+            binary = getattr(
+                adapter,
+                "binary",
+                owner,
+            )
+            return f"{binary} <task-context>"
+
+        cmd = build_command(prompt)
+
         return " ".join(cmd[:2]) + " <task-context>"
 
     def _run_qa(self, root: Path, task_text: str):
@@ -100,6 +262,7 @@ class ExecutionEngine:
         integration_branch: str,
         task_id: str,
         task_text: str,
+        project_name: str,
         results,
         attempt: int,
         primary_owner: str = "codex",
@@ -126,7 +289,28 @@ class ExecutionEngine:
             git.create_or_reset_branch_from(repair_branch, integration_branch)
             print(f"→ QA repair attempt {attempt} with {owner}...")
 
-            proc = adapter.run(root, prompt, stream=True)
+            self._agent_start(
+                owner,
+                project_name=project_name,
+                task_id=task_id,
+                phase=f"qa-repair-{attempt}",
+            )
+
+            try:
+                proc = adapter.run(
+                    root,
+                    prompt,
+                    stream=True,
+                )
+            except Exception:
+                self._agent_error(
+                    owner,
+                    project_name=project_name,
+                    task_id=task_id,
+                    phase=f"qa-repair-{attempt}",
+                )
+                raise
+
             last_proc = proc
             used_owner = owner
 
@@ -138,6 +322,14 @@ class ExecutionEngine:
                     else "repair returned success but produced no repository changes"
                 )
                 print(f"→ QA repair owner {owner} failed ({reason}).")
+
+                self._agent_error(
+                    owner,
+                    project_name=project_name,
+                    task_id=task_id,
+                    phase=f"qa-repair-{attempt}",
+                )
+
                 git.reset_hard_to(integration_branch)
                 if owner_index < len(owners) - 1:
                     continue
@@ -147,6 +339,12 @@ class ExecutionEngine:
                 f"REPAIR {task_id}: deterministic QA failure"
             )
             if not committed:
+                self._agent_error(
+                    owner,
+                    project_name=project_name,
+                    task_id=task_id,
+                    phase=f"qa-repair-{attempt}",
+                )
                 git.reset_hard_to(integration_branch)
                 break
 
@@ -162,6 +360,13 @@ class ExecutionEngine:
                 and git.is_ancestor(repair_commit_sha, integration_branch)
             )
             if not merged:
+                self._agent_error(
+                    owner,
+                    project_name=project_name,
+                    task_id=task_id,
+                    phase=f"qa-repair-{attempt}",
+                )
+
                 return {
                     "success": False,
                     "owner": used_owner,
@@ -171,6 +376,9 @@ class ExecutionEngine:
                 }
 
             print(f"✓ QA repair merged into {integration_branch}")
+
+            self._agent_idle(owner)
+
             return {
                 "success": True,
                 "owner": used_owner,
@@ -281,9 +489,36 @@ class ExecutionEngine:
             # QA runs against the cumulative integration branch.
             if decision.primary_owner == "deterministic_qa":
                 git.create_or_switch_integration(integration_branch)
-                results = self._run_qa(root, decision.task_text)
+
+                self._agent_start(
+                    "deterministic_qa",
+                    project_name=plan.project_name,
+                    task_id=decision.task_id,
+                    phase="qa",
+                )
+
+                try:
+                    results = self._run_qa(
+                        root,
+                        decision.task_text,
+                    )
+                except Exception:
+                    self._agent_error(
+                        "deterministic_qa",
+                        project_name=plan.project_name,
+                        task_id=decision.task_id,
+                        phase="qa",
+                    )
+                    raise
 
                 if not results:
+                    self._agent_error(
+                        "deterministic_qa",
+                        project_name=plan.project_name,
+                        task_id=decision.task_id,
+                        phase="qa",
+                    )
+
                     records.append(
                         ExecutionRecord(
                             task_id=decision.task_id,
@@ -331,12 +566,21 @@ class ExecutionEngine:
                     # QA routing decisions use fallback_owner as the preferred
                     # engineering repair owner when available.
                     preferred_owner = decision.fallback_owner or "codex"
+
+                    self._agent_waiting(
+                        "deterministic_qa",
+                        project_name=plan.project_name,
+                        task_id=decision.task_id,
+                        phase="qa-repair",
+                    )
+
                     repair = self._attempt_qa_repair(
                         root=root,
                         git=git,
                         integration_branch=integration_branch,
                         task_id=decision.task_id,
                         task_text=decision.task_text,
+                        project_name=plan.project_name,
                         results=results,
                         attempt=qa_repairs_used,
                         primary_owner=preferred_owner,
@@ -349,7 +593,27 @@ class ExecutionEngine:
                     if repair_succeeded:
                         print("→ Re-running deterministic QA after repair...")
                         git.create_or_switch_integration(integration_branch)
-                        results = self._run_qa(root, decision.task_text)
+
+                        self._agent_start(
+                            "deterministic_qa",
+                            project_name=plan.project_name,
+                            task_id=decision.task_id,
+                            phase="qa-rerun",
+                        )
+
+                        try:
+                            results = self._run_qa(
+                                root,
+                                decision.task_text,
+                            )
+                        except Exception:
+                            self._agent_error(
+                                "deterministic_qa",
+                                project_name=plan.project_name,
+                                task_id=decision.task_id,
+                                phase="qa-rerun",
+                            )
+                            raise
                         for cmd, proc in results:
                             print(f"$ {' '.join(cmd)}")
                             if proc.stdout:
@@ -359,6 +623,18 @@ class ExecutionEngine:
 
                 failed = self._qa_failed(results)
                 qa_stdout, qa_stderr = self._qa_output(results)
+
+                if failed:
+                    self._agent_error(
+                        "deterministic_qa",
+                        project_name=plan.project_name,
+                        task_id=decision.task_id,
+                        phase="qa",
+                    )
+                else:
+                    self._agent_idle(
+                        "deterministic_qa",
+                    )
 
                 records.append(
                     ExecutionRecord(
@@ -412,7 +688,28 @@ class ExecutionEngine:
             base_sha = git.head_sha()
 
             print(f"→ Starting {decision.primary_owner}...")
-            proc = adapter.run(root, prompt, stream=True)
+
+            self._agent_start(
+                decision.primary_owner,
+                project_name=plan.project_name,
+                task_id=decision.task_id,
+                phase="implementation",
+            )
+
+            try:
+                proc = adapter.run(
+                    root,
+                    prompt,
+                    stream=True,
+                )
+            except Exception:
+                self._agent_error(
+                    decision.primary_owner,
+                    project_name=plan.project_name,
+                    task_id=decision.task_id,
+                    phase="implementation",
+                )
+                raise
 
             final_proc = proc
             escalated = False
@@ -441,10 +738,41 @@ class ExecutionEngine:
                     print(f"→ Primary failed ({reason}). Escalating once to {fallback}...")
 
                     # Remove partial/empty primary state before fallback.
-                    git.reset_hard_to(integration_branch)
-                    git.create_or_reset_branch_from(task_branch, integration_branch)
+                    self._agent_error(
+                        decision.primary_owner,
+                        project_name=plan.project_name,
+                        task_id=decision.task_id,
+                        phase="implementation",
+                    )
 
-                    final_proc = fallback_adapter.run(root, prompt, stream=True)
+                    git.reset_hard_to(integration_branch)
+                    git.create_or_reset_branch_from(
+                        task_branch,
+                        integration_branch,
+                    )
+
+                    self._agent_start(
+                        fallback,
+                        project_name=plan.project_name,
+                        task_id=decision.task_id,
+                        phase="fallback",
+                    )
+
+                    try:
+                        final_proc = fallback_adapter.run(
+                            root,
+                            prompt,
+                            stream=True,
+                        )
+                    except Exception:
+                        self._agent_error(
+                            fallback,
+                            project_name=plan.project_name,
+                            task_id=decision.task_id,
+                            phase="fallback",
+                        )
+                        raise
+
                     escalated = True
                     escalation_owner = fallback
                     command_owner = fallback
@@ -459,6 +787,13 @@ class ExecutionEngine:
                 )
 
                 if not changed:
+                    self._agent_error(
+                        command_owner,
+                        project_name=plan.project_name,
+                        task_id=decision.task_id,
+                        phase="implementation",
+                    )
+
                     # Defensive: staged/working tree unexpectedly vanished.
                     git.reset_hard_to(integration_branch)
                     git.create_or_switch_integration(integration_branch)
@@ -483,6 +818,13 @@ class ExecutionEngine:
 
                 task_commit_sha = git.head_sha()
                 if task_commit_sha == base_sha:
+                    self._agent_error(
+                        command_owner,
+                        project_name=plan.project_name,
+                        task_id=decision.task_id,
+                        phase="implementation",
+                    )
+
                     git.reset_hard_to(integration_branch)
                     git.create_or_switch_integration(integration_branch)
                     records.append(
@@ -515,6 +857,13 @@ class ExecutionEngine:
                 )
 
                 if not merged:
+                    self._agent_error(
+                        command_owner,
+                        project_name=plan.project_name,
+                        task_id=decision.task_id,
+                        phase="implementation",
+                    )
+
                     records.append(
                         ExecutionRecord(
                             task_id=decision.task_id,
@@ -532,6 +881,11 @@ class ExecutionEngine:
                     continue
 
                 print(f"✓ {decision.task_id} committed and merged into {integration_branch}")
+
+                self._agent_idle(
+                    command_owner,
+                )
+
                 records.append(
                     ExecutionRecord(
                         task_id=decision.task_id,
@@ -547,6 +901,13 @@ class ExecutionEngine:
                     )
                 )
             else:
+                self._agent_error(
+                    command_owner,
+                    project_name=plan.project_name,
+                    task_id=decision.task_id,
+                    phase="implementation",
+                )
+
                 # Failed task, including false-success/no-change executions, is not merged.
                 no_change = final_proc.returncode == 0 and not git.has_changes()
                 git.reset_hard_to(integration_branch)
