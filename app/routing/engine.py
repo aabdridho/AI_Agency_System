@@ -5,10 +5,10 @@ from app.routing.policy import RoutingPolicy
 from app.routing.models import RoutingPlan
 
 class RoutingEngine:
-    def __init__(self):
+    def __init__(self, policy: RoutingPolicy | None = None):
         self.parser = TaskParser()
         self.classifier = TaskClassifier()
-        self.policy = RoutingPolicy()
+        self.policy = policy or RoutingPolicy()
 
     def build_plan(self, project_root: str | Path) -> RoutingPlan:
         project_root = Path(project_root)

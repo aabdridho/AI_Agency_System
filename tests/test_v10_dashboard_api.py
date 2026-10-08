@@ -55,7 +55,7 @@ def test_project_with_tasks_gets_preview_routing_without_writing(env):
     detail = client.get("/api/projects/kafe-site").json()
     assert detail["routing_source"] == "preview"
     owners = [d["primary_owner"] for d in detail["routing"]["decisions"]]
-    assert owners == ["codex", "claude_code", "codex", "deterministic_qa"]
+    assert owners == ["codex", "codex", "codex", "deterministic_qa"]
     assert not (runtime / "routing").exists()  # preview never writes
 
 

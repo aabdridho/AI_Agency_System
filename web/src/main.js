@@ -16,6 +16,7 @@ import { startAgentMonitor } from './agents.js';
 let online = false;
 let mode = 'sim';
 let saveTimer = null;
+let billingTimer = null;
 
 // ---------- tier config persistence (api.py → runtime_data/config/tiers.json) ----------
 function applyServerTiers(tiers) {
@@ -36,6 +37,78 @@ function onTiersChanged() {
       $('cfgState').textContent = 'tersimpan ke runtime_data/config/tiers.json';
     } catch (e) {
       $('cfgState').textContent = `gagal menyimpan: ${e.message}`;
+    }
+  }, 400);
+}
+
+// ---------- billing policy persistence ----------
+
+const BILLING_FIELDS = [
+  'infrastructure_allocation_usd',
+  'subscription_allocation_usd',
+  'engineering_service_fee_usd',
+  'qa_risk_overhead_percent',
+  'margin_percent',
+  'minimum_project_fee_usd',
+];
+
+function applyBillingConfig(cfg) {
+  if (!cfg) return;
+
+  BILLING_FIELDS.forEach((key) => {
+    const el = document.querySelector(
+      `[data-billing="${key}"]`
+    );
+
+    if (el) el.value = cfg[key] ?? '0';
+  });
+}
+
+function currentBillingConfig() {
+  const result = {
+    currency: 'USD',
+    pricing_basis: 'ai_compute_equivalent_list_reference',
+  };
+
+  BILLING_FIELDS.forEach((key) => {
+    const el = document.querySelector(
+      `[data-billing="${key}"]`
+    );
+
+    result[key] = el?.value || '0';
+  });
+
+  return result;
+}
+
+function onBillingChanged() {
+  if (!online) {
+    $('billingState').textContent =
+      'api.py offline';
+    return;
+  }
+
+  clearTimeout(billingTimer);
+
+  $('billingState').textContent =
+    'menyimpan…';
+
+  billingTimer = setTimeout(async () => {
+    try {
+      await api.putBillingConfig(
+        currentBillingConfig()
+      );
+
+      $('billingState').textContent =
+        'tersimpan ke runtime_data/config/billing.json';
+
+      const selected = $('project')?.value;
+      if (selected && mode === 'live') {
+        await loadProject(selected);
+      }
+    } catch (e) {
+      $('billingState').textContent =
+        `gagal menyimpan: ${e.message}`;
     }
   }, 400);
 }
@@ -97,7 +170,13 @@ async function enterLive() {
 async function loadProject(name) {
   if (!name) return;
   try {
-    const d = await api.getProject(name);
+    const [d, economics] = await Promise.all([
+      api.getProject(name),
+      api.getEconomics(name),
+    ]);
+
+    d.economics = economics;
+
     initMap(LIVE);
     renderProject(d);
     $('replay').disabled = !d.routing;
@@ -130,6 +209,11 @@ function wire() {
     if (store.running) return;
     resetTiers(); renderCfg(onTiersChanged); onTiersChanged();
   });
+
+  $('billingCfg')?.addEventListener(
+    'change',
+    onBillingChanged,
+  );
 }
 
 async function boot() {
@@ -142,6 +226,13 @@ async function boot() {
       const cfg = await api.getConfig();
       applyServerTiers(cfg.tiers);
       $('cfgState').textContent = cfg.source === 'saved' ? 'dimuat dari runtime_data/config/tiers.json' : 'default';
+
+      const billing = await api.getBillingConfig();
+      applyBillingConfig(billing);
+      $('billingState').textContent =
+        billing.source === 'saved'
+          ? 'dimuat dari runtime_data/config/billing.json'
+          : 'default';
     } catch { /* keep defaults */ }
   } else {
     $('cfgState').textContent = 'default · api.py offline';

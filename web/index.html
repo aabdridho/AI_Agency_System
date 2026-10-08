@@ -42,10 +42,49 @@
   <section class="cfgwrap" aria-label="Model per tingkat GOAT">
     <div class="cfghead">
       <h2>Model per tingkat GOAT</h2>
-      <p>Satu tingkat = satu model, dari Claude Pro atau ChatGPT Plus (Codex). <span id="cfgState" class="t-dim"></span>. Executor di <code>app/execution</code> belum membaca pilihan ini.</p>
+      <p>Satu tingkat = satu model. <span id="cfgState" class="t-dim"></span>. Konfigurasi ini digunakan langsung oleh GOAT router dan execution runtime.</p>
       <button class="go" id="cfgReset" type="button" data-lock>Reset default</button>
     </div>
     <div class="cfg" id="cfg"></div>
+  </section>
+
+  <section class="cfgwrap billingcfg" data-show="live" hidden aria-label="Client billing policy">
+    <div class="cfghead">
+      <h2>Client Billing Policy</h2>
+      <p>Commercial pricing policy. AI compute tetap dipisahkan dari actual provider cash cost. <span id="billingState" class="t-dim"></span></p>
+    </div>
+
+    <div class="billingfields" id="billingCfg">
+      <label>
+        <span>Infrastructure USD</span>
+        <input id="billInfra" type="number" min="0" step="0.01" data-billing="infrastructure_allocation_usd">
+      </label>
+
+      <label>
+        <span>Subscription USD</span>
+        <input id="billSubscription" type="number" min="0" step="0.01" data-billing="subscription_allocation_usd">
+      </label>
+
+      <label>
+        <span>Engineering USD</span>
+        <input id="billEngineering" type="number" min="0" step="0.01" data-billing="engineering_service_fee_usd">
+      </label>
+
+      <label>
+        <span>QA / Risk %</span>
+        <input id="billQa" type="number" min="0" step="0.1" data-billing="qa_risk_overhead_percent">
+      </label>
+
+      <label>
+        <span>Margin %</span>
+        <input id="billMargin" type="number" min="0" step="0.1" data-billing="margin_percent">
+      </label>
+
+      <label>
+        <span>Minimum Fee USD</span>
+        <input id="billMinimum" type="number" min="0" step="0.01" data-billing="minimum_project_fee_usd">
+      </label>
+    </div>
   </section>
 
   <div class="grid">
@@ -124,6 +163,72 @@
       <div class="card">
         <h2>Deployment</h2>
         <p class="mono-sm" id="lvDeploy">—</p>
+      </div>
+
+      <div class="card economics">
+        <h2>Project Economics</h2>
+
+        <div id="econEmpty" class="note">
+          Belum ada telemetry usage untuk project ini.
+        </div>
+
+        <div id="econData" hidden>
+          <div class="econrow">
+            <span>AI compute reference</span>
+            <b id="econAi">—</b>
+          </div>
+
+          <div class="econrow">
+            <span>GOAT baseline</span>
+            <b id="econBaseline">—</b>
+          </div>
+
+          <div class="econrow">
+            <span>Estimated GOAT savings</span>
+            <b id="econSavings" class="t-pass">—</b>
+          </div>
+
+          <div class="econrow">
+            <span>Actual provider cost</span>
+            <b id="econActual">UNKNOWN</b>
+          </div>
+
+          <hr>
+
+          <div class="econrow">
+            <span>Infrastructure</span>
+            <b id="econInfra">—</b>
+          </div>
+
+          <div class="econrow">
+            <span>Subscription allocation</span>
+            <b id="econSubscription">—</b>
+          </div>
+
+          <div class="econrow">
+            <span>Engineering / service</span>
+            <b id="econEngineering">—</b>
+          </div>
+
+          <div class="econrow">
+            <span>QA / risk</span>
+            <b id="econQa">—</b>
+          </div>
+
+          <div class="econrow">
+            <span>Margin</span>
+            <b id="econMargin">—</b>
+          </div>
+
+          <div class="econrow total">
+            <span>Client price</span>
+            <b id="econClient">—</b>
+          </div>
+
+          <p class="note" id="econNote">
+            Equivalent/list pricing reference. Savings adalah estimasi counterfactual.
+          </p>
+        </div>
       </div>
     </aside>
   </div>

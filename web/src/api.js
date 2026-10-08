@@ -30,3 +30,15 @@ export const getProject = (name) => req(`/api/projects/${encodeURIComponent(name
 export const saveRouting = (name) => req(`/api/projects/${encodeURIComponent(name)}/route`, { method: 'POST' });
 export const getConfig = () => req('/api/config');
 export const putConfig = (tiers) => req('/api/config', { method: 'PUT', body: JSON.stringify({ tiers }) });
+
+export const getEconomics = (name) =>
+  req(`/api/projects/${encodeURIComponent(name)}/economics`);
+
+export const getBillingConfig = () =>
+  req('/api/billing/config');
+
+export const putBillingConfig = (policy) =>
+  req('/api/billing/config', {
+    method: 'PUT',
+    body: JSON.stringify(policy),
+  });

@@ -3,6 +3,8 @@ from pathlib import Path
 
 from app.routing.classifier import TaskClassifier
 from app.routing.engine import RoutingEngine
+from app.routing.policy import RoutingPolicy
+from app.routing.goat_config import GoatConfig
 from app.routing.storage import RoutingStorage
 
 
@@ -17,7 +19,12 @@ def test_backend_routes_to_codex(tmp_path):
         "- [ ] Submit form data to `email`\n",
         encoding="utf-8",
     )
-    plan = RoutingEngine().build_plan(project)
+    engine = RoutingEngine(
+        policy=RoutingPolicy(
+            goat_config=GoatConfig(tmp_path / "missing-tiers.json")
+        )
+    )
+    plan = engine.build_plan(project)
     assert plan.decisions[0].primary_owner == "codex"
 
 def test_qa_routes_to_deterministic_first(tmp_path):
@@ -32,15 +39,23 @@ def test_qa_routes_to_deterministic_first(tmp_path):
     assert decision.primary_owner == "deterministic_qa"
     assert decision.fallback_owner == "codex"
 
-def test_frontend_primary_is_claude_code(tmp_path):
+def test_frontend_task_resolves_through_goat_build_tier(tmp_path):
     project = tmp_path / "p"
     (project / "docs").mkdir(parents=True)
     (project / "docs/task.md").write_text(
         "- [ ] Implement `hero` section\n",
         encoding="utf-8",
     )
-    plan = RoutingEngine().build_plan(project)
-    assert plan.decisions[0].primary_owner == "claude_code"
+    engine = RoutingEngine(
+        policy=RoutingPolicy(
+            goat_config=GoatConfig(tmp_path / "missing-tiers.json")
+        )
+    )
+    plan = engine.build_plan(project)
+
+    assert plan.decisions[0].goat_tier == "build"
+    assert plan.decisions[0].primary_owner == "codex"
+    assert plan.decisions[0].primary_model == "gpt-6.1-sol"
     assert plan.decisions[0].fallback_owner == "codex"
 
 def test_max_escalation_is_one(tmp_path):

@@ -1,94 +1,118 @@
+from app.routing.goat_config import GoatConfig, GoatTierClassifier
 from app.routing.models import RoutingDecision
+
 
 class RoutingPolicy:
     """
-    Deterministic V0.5 routing policy.
+    V0.13 GOAT routing policy.
 
-    Design goals:
-    - one task = one primary owner
-    - no automatic dual-model review
-    - deterministic QA before AI review
-    - fallback only on explicit failure/risk trigger
-    - max escalation = 1
+    Responsibility split:
+
+    1. Category/classifier describes the task domain.
+    2. GOAT tier classifier chooses required capability.
+    3. Runtime GOAT config chooses provider/model/effort.
+    4. Execution executes that explicit resolved contract.
+
+    Invariants:
+    - one task = one primary model
+    - deterministic QA stays deterministic first
+    - no automatic second-model review
+    - fallback/escalation is bounded to one step
     """
 
-    def decide(self, task_id: str, task_text: str, category: str, confidence: float) -> RoutingDecision:
-        if category == "frontend":
-            return RoutingDecision(
-                task_id=task_id,
-                task_text=task_text,
-                category=category,
-                primary_owner="claude_code",
-                fallback_owner="codex",
-                confidence=confidence,
-                reason="Frontend/UI-heavy work is assigned to Claude Code as the primary owner.",
-                escalation_trigger=(
-                    "Escalate only if implementation fails deterministic checks, "
-                    "produces blocking integration issues, or Claude Code cannot complete the task."
-                ),
-            )
+    def __init__(
+        self,
+        goat_config: GoatConfig | None = None,
+        tier_classifier: GoatTierClassifier | None = None,
+    ):
+        self.goat_config = goat_config or GoatConfig()
+        self.tier_classifier = tier_classifier or GoatTierClassifier()
 
-        if category == "backend":
-            return RoutingDecision(
-                task_id=task_id,
-                task_text=task_text,
-                category=category,
-                primary_owner="codex",
-                fallback_owner="claude_code",
-                confidence=confidence,
-                reason="Backend/server/data-flow work is assigned to Codex as the primary owner.",
-                escalation_trigger=(
-                    "Escalate only after reproducible failure, blocking integration error, "
-                    "or unresolved implementation issue."
-                ),
-            )
+    def decide(
+        self,
+        task_id: str,
+        task_text: str,
+        category: str,
+        confidence: float,
+    ) -> RoutingDecision:
+        tier = self.tier_classifier.classify(
+            task_text,
+            category,
+        )
 
-        if category == "architecture":
-            return RoutingDecision(
-                task_id=task_id,
-                task_text=task_text,
-                category=category,
-                primary_owner="claude_code",
-                fallback_owner="codex",
-                confidence=confidence,
-                reason="Architecture is assigned to Claude Code first, with Codex as bounded fallback.",
-                escalation_trigger=(
-                    "Escalate if the architecture conflicts with confirmed requirements "
-                    "or deterministic repository constraints."
-                ),
-            )
+        primary = self.goat_config.resolve(tier)
+        escalation = self.goat_config.resolve("esc")
 
+        # QA stays zero-token/deterministic first.
         if category == "qa":
             return RoutingDecision(
                 task_id=task_id,
                 task_text=task_text,
                 category=category,
+                goat_tier="review",
                 primary_owner="deterministic_qa",
-                fallback_owner="codex",
+                primary_model=None,
+                primary_effort=None,
+                fallback_owner=escalation.owner,
+                fallback_model=escalation.executable_model,
+                fallback_effort=escalation.effort,
+                model_source=primary.source,
                 confidence=confidence,
-                reason="QA must run deterministic tools first; AI is used only when checks fail or diagnosis is needed.",
-                escalation_trigger="Use Codex only when deterministic checks fail and diagnosis/remediation is required.",
+                reason=(
+                    "Deterministic QA runs first. AI escalation is used only "
+                    "when deterministic validation fails and remediation is required."
+                ),
+                escalation_trigger=(
+                    "Escalate only after a reproducible deterministic QA failure."
+                ),
+                max_escalations=1,
             )
 
-        if category == "setup":
-            return RoutingDecision(
-                task_id=task_id,
-                task_text=task_text,
-                category=category,
-                primary_owner="codex",
-                fallback_owner="claude_code",
-                confidence=confidence,
-                reason="Project setup is treated as engineering/tooling work and routed to Codex first.",
-                escalation_trigger="Escalate only if setup conflicts with frontend-specific tooling or cannot be completed.",
-            )
+        # Triage itself is handled internally before execution, so an
+        # implementation task may not resolve to rules.
+        if primary.owner == "internal_decision":
+            primary = self.goat_config.resolve("build")
+            tier = "build"
+
+        fallback_owner = escalation.owner
+
+        # Avoid pretending there is a useful fallback if escalation resolves
+        # to the exact same owner/model/effort contract.
+        same_execution = (
+            fallback_owner == primary.owner
+            and escalation.executable_model == primary.executable_model
+            and escalation.effort == primary.effort
+        )
 
         return RoutingDecision(
             task_id=task_id,
             task_text=task_text,
             category=category,
-            primary_owner="codex",
-            fallback_owner="claude_code",
+            goat_tier=tier,
+            primary_owner=primary.owner,
+            primary_model=primary.executable_model,
+            primary_effort=primary.effort,
+            fallback_owner=None if same_execution else fallback_owner,
+            fallback_model=(
+                None
+                if same_execution
+                else escalation.executable_model
+            ),
+            fallback_effort=(
+                None
+                if same_execution
+                else escalation.effort
+            ),
+            model_source=primary.source,
             confidence=confidence,
-            reason="General engineering defaults to Codex under the V0.5 policy.",
-            escalation_trigger="Escalate only on reproducible failure or clear domain mismatch.",
+            reason=(
+                f"GOAT tier '{tier}' resolved through runtime model config "
+                f"to owner '{primary.owner}' and model "
+                f"'{primary.executable_model}'."
+            ),
+            escalation_trigger=(
+                "Escalate once only after explicit execution failure, "
+                "no-change failure, or blocking integration failure."
+            ),
+            max_escalations=0 if same_execution else 1,
         )

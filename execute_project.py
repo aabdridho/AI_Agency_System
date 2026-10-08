@@ -3,6 +3,7 @@ from pathlib import Path
 
 from app.execution.engine import ExecutionEngine
 from app.execution.storage import ExecutionStorage
+from app.execution.usage import UsageLedger
 from app.routing.engine import RoutingEngine
 from route_project import resolve_project_path
 
@@ -79,7 +80,16 @@ def main():
             print("✗ Execution dibatalkan.")
             return
 
-    report = ExecutionEngine().execute(
+    usage_ledger = None
+
+    if not dry_run:
+        usage_ledger = UsageLedger(
+            Path("runtime_data") / "usage"
+        )
+
+    report = ExecutionEngine(
+        usage_ledger=usage_ledger,
+    ).execute(
         plan,
         project_root,
         dry_run=dry_run,

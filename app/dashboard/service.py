@@ -20,10 +20,18 @@ from app.dashboard.models import (
 )
 from app.routing.engine import RoutingEngine
 from app.routing.storage import RoutingStorage
+from app.routing.goat_config import GoatConfig
+from app.execution.costs import CostEngine, load_usage_records
+from app.execution.savings import GoatSavingsEngine
+from app.execution.billing import (
+    BillingConfig,
+    BillingEngine,
+    BillingPolicy,
+)
 
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
 
-RUNTIME_DIRS = ("routing", "execution", "delivery", "deployment", "handoff")
+RUNTIME_DIRS = ("routing", "execution", "delivery", "deployment", "handoff", "usage")
 
 
 class ProjectNotFound(LookupError):
@@ -199,7 +207,7 @@ class DashboardService:
         RoutingStorage().save(plan, self.runtime_root)
         return self.detail(name)
 
-    # ---------- tier config (stored only; execution adapters do not read it yet) ----------
+    # ---------- tier config (GOAT runtime source of truth) ----------
     def _config_path(self) -> Path:
         return self.runtime_root / "config" / "tiers.json"
 
@@ -217,6 +225,102 @@ class DashboardService:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(cfg.model_dump(), indent=2), encoding="utf-8")
         return {"source": "saved", **cfg.model_dump()}
+
+    # ---------- economics / billing ----------
+
+    def _billing_config(self) -> BillingConfig:
+        return BillingConfig(
+            self.runtime_root / "config" / "billing.json"
+        )
+
+    def get_billing_config(self) -> dict[str, Any]:
+        config = self._billing_config()
+        source = "saved" if config.path.is_file() else "default"
+        policy = config.load()
+
+        return {
+            "source": source,
+            **policy.model_dump(),
+        }
+
+    def save_billing_config(
+        self,
+        policy: BillingPolicy,
+    ) -> dict[str, Any]:
+        config = self._billing_config()
+        config.save(policy)
+
+        return {
+            "source": "saved",
+            **policy.model_dump(),
+        }
+
+    def economics(self, name: str) -> dict[str, Any]:
+        if not valid_name(name) or name not in self.project_names():
+            raise ProjectNotFound(name)
+
+        usage_file = (
+            self.runtime_root
+            / "usage"
+            / name
+            / "usage.jsonl"
+        )
+
+        if not usage_file.is_file():
+            return {
+                "project_name": name,
+                "available": False,
+                "source": "usage_ledger",
+                "reason": "usage.jsonl belum tersedia",
+                "cost": None,
+                "savings": None,
+                "billing": None,
+            }
+
+        records = load_usage_records(usage_file)
+
+        if not records:
+            return {
+                "project_name": name,
+                "available": False,
+                "source": "usage_ledger",
+                "reason": "usage.jsonl tidak memiliki record",
+                "cost": None,
+                "savings": None,
+                "billing": None,
+            }
+
+        cost = CostEngine().summarize(
+            name,
+            records,
+        )
+
+        goat_config = GoatConfig(
+            self.runtime_root / "config" / "tiers.json"
+        )
+
+        savings = GoatSavingsEngine(
+            goat_config=goat_config,
+        ).summarize(
+            name,
+            records,
+        )
+
+        policy = self._billing_config().load()
+
+        billing = BillingEngine().calculate(
+            cost,
+            policy,
+        )
+
+        return {
+            "project_name": name,
+            "available": True,
+            "source": "live_derived_from_usage",
+            "cost": cost.model_dump(),
+            "savings": savings.model_dump(),
+            "billing": billing.model_dump(),
+        }
 
 
 __all__ = ["DashboardService", "ProjectNotFound", "STAGE_KEYS", "valid_name"]

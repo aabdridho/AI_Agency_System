@@ -11,6 +11,7 @@ from app.discovery.engine import RequirementDiscoveryEngine
 from app.models.schemas import DiscoveryResult
 from app.workspace import OUTPUT_ROOT, SYSTEM_ROOT
 from app.agents.router import router as agents_router
+from app.execution.billing import BillingPolicy
 
 app = FastAPI(title="AI Agency System API", version="0.10.0")
 app.include_router(agents_router)
@@ -88,6 +89,38 @@ def get_config(svc: DashboardService = Depends(get_dashboard)):
 @app.put("/api/config")
 def put_config(cfg: TierConfig, svc: DashboardService = Depends(get_dashboard)):
     return svc.save_config(cfg)
+
+
+@app.get("/api/projects/{name}/economics")
+def project_economics(
+    name: str,
+    svc: DashboardService = Depends(get_dashboard),
+):
+    try:
+        return svc.economics(name)
+    except ProjectNotFound:
+        raise HTTPException(
+            404,
+            f"Project '{name}' tidak ditemukan",
+        )
+
+
+@app.get("/api/billing/config")
+def get_billing_config(
+    svc: DashboardService = Depends(get_dashboard),
+):
+    return svc.get_billing_config()
+
+
+@app.put("/api/billing/config")
+def put_billing_config(
+    policy: BillingPolicy,
+    svc: DashboardService = Depends(get_dashboard),
+):
+    try:
+        return svc.save_billing_config(policy)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
 
 
 # Built frontend (cd web && npm run build). Mounted last so API routes win.

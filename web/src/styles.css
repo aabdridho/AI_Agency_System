@@ -179,3 +179,75 @@ tbody tr.cur td:first-child{box-shadow:inset 3px 0 0 var(--codex)}
 .p-cat-qa{color:var(--rule)}
 #out{flex:1 1 auto;height:0;min-height:340px}
 td.mono{white-space:nowrap}
+
+
+/* ---------- V0.13 project economics ---------- */
+.billingfields{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  gap:8px;
+}
+
+.billingfields label{
+  display:grid;
+  gap:5px;
+  padding:9px 10px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:var(--panel2);
+}
+
+.billingfields label span{
+  font-size:.68rem;
+  color:var(--muted);
+}
+
+.billingfields input{
+  width:100%;
+  min-width:0;
+  font-family:var(--mono);
+  font-size:.72rem;
+  background:var(--panel);
+  color:var(--fg);
+  border:1px solid var(--line);
+  border-radius:6px;
+  padding:6px 8px;
+}
+
+.economics hr{
+  border:0;
+  border-top:1px solid var(--line);
+  margin:10px 0;
+}
+
+.econrow{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:10px;
+  padding:5px 0;
+  font-size:.74rem;
+}
+
+.econrow span{
+  color:var(--muted);
+}
+
+.econrow b{
+  font-family:var(--mono);
+  font-size:.72rem;
+  text-align:right;
+  font-variant-numeric:tabular-nums;
+}
+
+.econrow.total{
+  margin-top:7px;
+  padding-top:9px;
+  border-top:1px solid var(--line);
+}
+
+.econrow.total span,
+.econrow.total b{
+  color:var(--pass);
+  font-weight:600;
+}

@@ -36,7 +36,86 @@ export function renderProject(d) {
   setStages(d.stages);
   renderLedger(d);
   renderSummary(d);
+  renderEconomics(d.economics);
   renderBar(d);
+}
+
+const usd = (value) => {
+  if (value === null || value === undefined) return 'UNKNOWN';
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 'UNKNOWN';
+
+  if (Math.abs(n) < 0.01 && n !== 0) {
+    return `$${n.toFixed(6)}`;
+  }
+
+  return `$${n.toFixed(2)}`;
+};
+
+function renderEconomics(e) {
+  const empty = $('econEmpty');
+  const data = $('econData');
+
+  if (!e?.available) {
+    empty.hidden = false;
+    data.hidden = true;
+    empty.textContent = e?.reason ?? 'Belum ada telemetry usage untuk project ini.';
+    return;
+  }
+
+  empty.hidden = true;
+  data.hidden = false;
+
+  const cost = e.cost ?? {};
+  const savings = e.savings ?? {};
+  const billing = e.billing ?? {};
+
+  $('econAi').textContent = usd(
+    cost.known_equivalent_cost_usd
+  );
+
+  $('econBaseline').textContent = usd(
+    savings.baseline_known_equivalent_cost_usd
+  );
+
+  const savingUsd = usd(
+    savings.estimated_equivalent_savings_usd
+  );
+
+  const savingPct =
+    savings.estimated_savings_percent !== null &&
+    savings.estimated_savings_percent !== undefined
+      ? ` · ${savings.estimated_savings_percent}%`
+      : '';
+
+  $('econSavings').textContent =
+    `${savingUsd}${savingPct}`;
+
+  $('econActual').textContent =
+    billing.actual_provider_cost_known
+      ? usd(billing.actual_provider_cash_cost_usd)
+      : 'UNKNOWN';
+
+  $('econInfra').textContent =
+    usd(billing.infrastructure_allocation_usd);
+
+  $('econSubscription').textContent =
+    usd(billing.subscription_allocation_usd);
+
+  $('econEngineering').textContent =
+    usd(billing.engineering_service_fee_usd);
+
+  $('econQa').textContent =
+    usd(billing.qa_risk_overhead_usd);
+
+  $('econMargin').textContent =
+    usd(billing.margin_usd);
+
+  $('econClient').textContent =
+    usd(billing.final_client_price_usd);
+
+  $('econNote').textContent =
+    `AI = equivalent/list reference · GOAT savings = estimated counterfactual · baseline ${savings.baseline_model ?? 'unknown'}`;
 }
 
 function renderLedger(d) {
