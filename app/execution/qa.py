@@ -1,6 +1,7 @@
 import json
 import re
 import shutil
+from app.command_resolver import resolve_node_cli
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -68,10 +69,7 @@ class DeterministicQA:
         return QAProfile("generic", "Run the repository's deterministic validation suite.")
 
     def _npm_cmd(self) -> str | None:
-        npm_bin = shutil.which("npm.cmd") or shutil.which("npm")
-        if not npm_bin:
-            return None
-        return "npm.cmd" if str(npm_bin).lower().endswith("npm.cmd") else "npm"
+        return resolve_node_cli("npm")
 
     def _core_node_commands(self, repo: Path) -> list[list[str]]:
         npm_cmd = self._npm_cmd()

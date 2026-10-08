@@ -1,4 +1,5 @@
 from __future__ import annotations
+from app.command_resolver import resolve_node_cli
 import json,re,shutil,subprocess,sys
 from pathlib import Path
 from .models import ReadinessCheck
@@ -99,7 +100,7 @@ class DeliveryChecker:
         if p.exists():
             try: scripts=json.loads(p.read_text(encoding='utf-8')).get('scripts',{}) or {}
             except Exception: scripts={}
-            npm='npm.cmd' if shutil.which('npm.cmd') else ('npm' if shutil.which('npm') else None)
+            npm=resolve_node_cli('npm')
             if npm:
                 out=[]
                 for s in ('lint','typecheck','test','build'):
