@@ -138,10 +138,18 @@ class ProjectDocumentationGenerator:
             components.append("Frontend / presentation layer")
         if self._requires_backend(result):
             components.append("Submission handling layer for the confirmed contact form")
-        if data.get("contact_destination") == "email":
+        if (
+            data.get("contact_destination") == "email"
+            and self._requires_backend(result)
+        ):
             components.append("Email delivery integration")
-        elif data.get("contact_destination"):
-            components.append(f"Contact integration: {data['contact_destination']}")
+        elif (
+            data.get("contact_destination")
+            and self._requires_backend(result)
+        ):
+            components.append(
+                f"Contact integration: {data['contact_destination']}"
+            )
 
         lines = [
             "# Architecture",

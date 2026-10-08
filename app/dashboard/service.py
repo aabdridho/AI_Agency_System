@@ -31,7 +31,15 @@ from app.execution.billing import (
 
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
 
-RUNTIME_DIRS = ("routing", "execution", "delivery", "deployment", "handoff", "usage")
+RUNTIME_DIRS = (
+    "routing",
+    "execution",
+    "delivery",
+    "deployment",
+    "handoff",
+    "usage",
+    "orchestration",
+)
 
 
 class ProjectNotFound(LookupError):
@@ -80,7 +88,12 @@ class DashboardService:
             "delivery": _read_json(rt / "delivery" / name / "delivery_report.json"),
             "deployment_plan": _read_json(rt / "deployment" / name / "deployment_plan.json"),
             "deployment_result": _read_json(rt / "deployment" / name / "deployment_result.json"),
-            "handoff": _read_json(rt / "handoff" / name / "handoff_report.json"),
+            "handoff": _read_json(
+                rt / "handoff" / name / "handoff_report.json"
+            ),
+            "orchestration": _read_json(
+                rt / "orchestration" / name / "state.json"
+            ),
         }
 
     def _stages(self, root: Path | None, a: dict[str, Any], has_preview: bool) -> list[StageState]:
@@ -91,6 +104,88 @@ class DashboardService:
             return StageState(key=key, status=status, detail=detail)
 
         out: list[StageState] = []
+
+        orchestration = a.get("orchestration")
+
+        if orchestration:
+            completed = set(
+                orchestration.get("completed_stages", [])
+            )
+            current = orchestration.get("current_stage")
+            pipeline_status = orchestration.get("status")
+            waiting_for = orchestration.get("waiting_for")
+            failed_stage = orchestration.get("failed_stage")
+            last_error = orchestration.get("last_error")
+
+            for key in STAGE_KEYS:
+                if key in completed:
+                    out.append(
+                        st(
+                            key,
+                            "done",
+                            "completed by orchestrator",
+                        )
+                    )
+                    continue
+
+                if key == failed_stage:
+                    out.append(
+                        st(
+                            key,
+                            "fail",
+                            last_error or "stage gagal",
+                        )
+                    )
+                    continue
+
+                if key == current:
+                    if pipeline_status == "failed":
+                        out.append(
+                            st(
+                                key,
+                                "fail",
+                                last_error or "stage gagal",
+                            )
+                        )
+                    elif pipeline_status in {
+                        "running",
+                        "waiting_input",
+                        "waiting_approval",
+                    }:
+                        out.append(
+                            st(
+                                key,
+                                "wait",
+                                str(
+                                    waiting_for
+                                    or pipeline_status
+                                ),
+                            )
+                        )
+                    else:
+                        out.append(
+                            st(
+                                key,
+                                "todo",
+                                str(
+                                    pipeline_status
+                                    or "pending"
+                                ),
+                            )
+                        )
+                    continue
+
+                out.append(
+                    st(
+                        key,
+                        "todo",
+                        "belum dijalankan",
+                    )
+                )
+
+            return out
+
+        # Legacy project fallback: infer stage state from artifacts.
 
         # discovery
         if has("discovery.md") or has("requirement.md"):
@@ -141,6 +236,15 @@ class DashboardService:
                 out.append(st("delivery", "fail", f"{blockers} blocker"))
         else:
             out.append(st("delivery", "todo", "belum dicek"))
+
+        # economics
+        out.append(
+            st(
+                "economics",
+                "todo",
+                "legacy project - no orchestration state",
+            )
+        )
 
         # deployment
         res, dp = a["deployment_result"], a["deployment_plan"]
