@@ -11,6 +11,7 @@ import {
 } from './ui.js';
 import { runSim, runDemo, tierLabels, SIM_COLUMNS } from './sim.js';
 import { renderProject, replay, LIVE_COLUMNS } from './live.js';
+import { startAgentMonitor } from './agents.js';
 
 let online = false;
 let mode = 'sim';
@@ -153,7 +154,16 @@ async function boot() {
     ? '# Live: pilih project lalu "Replay". Simulasi: coba GOAT tier dengan model pilihan.'
     : '# api.py belum jalan, jadi mode Simulasi. Jalankan: uvicorn api:app --reload');
   await line('', 't-dim', `# ${ROLES.length} tier GOAT bisa diatur di panel "Model per tingkat".`);
-  if (isOnline) await enterLive(); else await enterSim();
+  if (isOnline) {
+    await enterLive();
+
+    startAgentMonitor({
+      isLive: () => mode === 'live',
+      selectedProject: () => $('project')?.value ?? '',
+    });
+  } else {
+    await enterSim();
+  }
 }
 
 boot();
