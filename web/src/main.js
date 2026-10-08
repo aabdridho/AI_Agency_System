@@ -113,6 +113,100 @@ function onBillingChanged() {
   }, 400);
 }
 
+// ---------- local project intake ----------
+
+function intakeReferences() {
+  return $('intakeReferences').value
+    .split(/\r?\n/)
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+function renderIntakeResult(payload) {
+  const result = payload.discovery;
+  const questions = result.questions ?? [];
+
+  $('intakeResult').hidden = false;
+
+  const confirmedCount = result.confirmed?.length ?? 0;
+  const unknownCount = result.unknown?.length ?? 0;
+
+  $('intakeSummary').textContent =
+    `${payload.project_name} · ${result.project_type} · ` +
+    `${confirmedCount} confirmed · ${unknownCount} unknown · ` +
+    (
+      result.ready_for_final_approval
+        ? 'ready for final approval'
+        : 'butuh konfirmasi'
+    );
+
+  const wrap = $('intakeQuestionWrap');
+  const list = $('intakeQuestions');
+
+  list.replaceChildren();
+
+  if (!questions.length) {
+    wrap.hidden = true;
+    return;
+  }
+
+  questions.forEach((question) => {
+    const li = document.createElement('li');
+    li.textContent = question;
+    list.appendChild(li);
+  });
+
+  wrap.hidden = false;
+}
+
+async function submitProjectIntake(event) {
+  event.preventDefault();
+
+  if (!online || store.running) return;
+
+  const projectName = $('intakeProject').value.trim();
+  const brief = $('intakeBrief').value.trim();
+
+  if (!projectName || !brief) return;
+
+  $('intakeSubmit').disabled = true;
+  $('intakeState').textContent = 'menganalisis brief…';
+
+  try {
+    const payload = await api.analyzeProjectIntake(
+      projectName,
+      brief,
+      intakeReferences(),
+    );
+
+    renderIntakeResult(payload);
+
+    $('intakeState').textContent =
+      payload.discovery.ready_for_final_approval
+        ? 'discovery siap untuk approval'
+        : 'discovery membutuhkan konfirmasi';
+
+    await line(
+      'discovery',
+      payload.discovery.ready_for_final_approval
+        ? 't-pass'
+        : 't-warn',
+      `brief ${payload.project_name} selesai dianalisis`,
+    );
+  } catch (e) {
+    $('intakeState').textContent = `gagal: ${e.message}`;
+
+    await line(
+      'discovery',
+      't-fail',
+      `intake gagal: ${e.message}`,
+    );
+  } finally {
+    $('intakeSubmit').disabled = false;
+  }
+}
+
+
 // ---------- modes ----------
 function setConn(isOnline) {
   online = isOnline;
@@ -189,6 +283,11 @@ async function loadProject(name) {
 // ---------- wiring ----------
 function wire() {
   $('speed').addEventListener('change', (e) => setSpeed(e.target.value));
+
+  $('intakeForm')?.addEventListener(
+    'submit',
+    submitProjectIntake,
+  );
   $('modeSim').addEventListener('click', () => { if (!store.running && mode !== 'sim') enterSim(); });
   $('modeLive').addEventListener('click', () => { if (!store.running && mode !== 'live') enterLive(); });
   $('project').addEventListener('change', (e) => { if (!store.running) loadProject(e.target.value); });

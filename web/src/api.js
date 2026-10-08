@@ -25,6 +25,17 @@ export async function ping() {
 }
 
 export const listAgents = () => req('/api/agents');
+
+export const analyzeProjectIntake = (projectName, brief, references = []) =>
+  req('/api/projects/intake', {
+    method: 'POST',
+    body: JSON.stringify({
+      project_name: projectName,
+      brief,
+      references,
+    }),
+  });
+
 export const listProjects = () => req('/api/projects');
 export const getProject = (name) => req(`/api/projects/${encodeURIComponent(name)}`);
 export const saveRouting = (name) => req(`/api/projects/${encodeURIComponent(name)}/route`, { method: 'POST' });

@@ -5,6 +5,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from app.dashboard import DashboardService, ProjectNotFound
+from app.dashboard.service import valid_name
+from app.orchestration.orchestrator import ProjectOrchestrator
 from app.dashboard.models import ProjectDetail, ProjectSummary, TierConfig
 from app.discovery.confirmation import ConfirmationGate
 from app.discovery.engine import RequirementDiscoveryEngine
@@ -32,6 +34,17 @@ class ConfirmationRequest(BaseModel):
     value: str | bool | int | float | list[str]
 
 
+class ProjectIntakeRequest(BaseModel):
+    project_name: str = Field(min_length=1, max_length=100)
+    brief: str = Field(min_length=1)
+    references: list[str] = []
+
+
+class ProjectIntakeResponse(BaseModel):
+    project_name: str
+    discovery: DiscoveryResult
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "version": "0.15.0"}
@@ -54,6 +67,46 @@ def confirm(payload: ConfirmationRequest):
 
 def get_dashboard() -> DashboardService:
     return DashboardService(runtime_root=SYSTEM_ROOT / "runtime_data", output_root=OUTPUT_ROOT)
+
+
+def get_orchestrator() -> ProjectOrchestrator:
+    return ProjectOrchestrator(
+        runtime_root=SYSTEM_ROOT / "runtime_data",
+        output_root=OUTPUT_ROOT,
+    )
+
+
+@app.post(
+    "/api/projects/intake",
+    response_model=ProjectIntakeResponse,
+)
+def project_intake(
+    payload: ProjectIntakeRequest,
+    orchestrator: ProjectOrchestrator = Depends(get_orchestrator),
+):
+    project_name = payload.project_name.strip()
+
+    if not valid_name(project_name):
+        raise HTTPException(
+            422,
+            (
+                "Nama project tidak valid. Gunakan huruf, angka, "
+                "titik, underscore, atau dash; jangan gunakan '..'."
+            ),
+        )
+
+    try:
+        result = orchestrator.analyze_brief(
+            payload.brief,
+            payload.references,
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+
+    return ProjectIntakeResponse(
+        project_name=project_name,
+        discovery=result,
+    )
 
 
 @app.get("/api/projects", response_model=list[ProjectSummary])
