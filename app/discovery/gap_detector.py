@@ -20,6 +20,14 @@ class GapDetector:
         ])
 
         for key, question in gaps:
+            # Explicit required sections already define the concrete page scope.
+            # Do not ask the client a second generic "required features" question.
+            if (
+                key == "required_features"
+                and "required_sections" in existing_keys
+            ):
+                continue
+
             if key not in existing_keys:
                 unknown.append(RequirementItem(
                     key=key, value=None, status="UNKNOWN",
