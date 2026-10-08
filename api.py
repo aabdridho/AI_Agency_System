@@ -1,4 +1,4 @@
-﻿from pathlib import Path
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
@@ -10,8 +10,10 @@ from app.discovery.confirmation import ConfirmationGate
 from app.discovery.engine import RequirementDiscoveryEngine
 from app.models.schemas import DiscoveryResult
 from app.workspace import OUTPUT_ROOT, SYSTEM_ROOT
+from app.agents.router import router as agents_router
 
 app = FastAPI(title="AI Agency System API", version="0.10.0")
+app.include_router(agents_router)
 engine = RequirementDiscoveryEngine()
 gate = ConfirmationGate()
 
