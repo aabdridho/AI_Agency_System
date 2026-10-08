@@ -12,10 +12,24 @@ class RoutingDecision(BaseModel):
     task_id: str
     task_text: str
     category: str
+
+    # V0.13 GOAT capability tier chosen independently from provider/model.
+    goat_tier: str = "build"
+
     primary_owner: Owner
     fallback_owner: Owner | None = None
     confidence: float = Field(ge=0.0, le=1.0)
     reason: str
+
+    # V0.13 explicit model attribution.
+    # Model selection is part of the routing contract so billing never
+    # depends on an invisible provider default.
+    primary_model: str | None = None
+    fallback_model: str | None = None
+    primary_effort: str | None = None
+    fallback_effort: str | None = None
+    model_source: str = "routing_policy"
+
     escalation_trigger: str | None = None
     max_escalations: int = 1
 
@@ -23,4 +37,4 @@ class RoutingPlan(BaseModel):
     project_name: str
     source_task_file: str
     decisions: list[RoutingDecision]
-    policy_version: str = "0.5"
+    policy_version: str = "0.13"

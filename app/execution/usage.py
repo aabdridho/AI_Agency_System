@@ -24,6 +24,12 @@ class UsageMetrics(BaseModel):
     usage_source: str = "cli_reported"
     estimated: bool = False
 
+    # Where model attribution came from. Claude normally reports the
+    # canonical model itself; Codex 0.160.1 usage events currently do not.
+    model_source: str | None = None
+    requested_effort: str | None = None
+    goat_tier: str | None = None
+
 
 class UsageRecord(BaseModel):
     timestamp: datetime
@@ -116,6 +122,7 @@ def parse_claude_usage(stdout: str) -> UsageMetrics | None:
     return UsageMetrics(
         provider="anthropic",
         model=",".join(sorted(model_names)),
+        model_source="cli_reported",
         input_tokens=input_tokens,
         cached_input_tokens=cached_tokens,
         cache_write_input_tokens=cache_write_tokens,

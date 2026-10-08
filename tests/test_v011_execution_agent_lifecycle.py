@@ -263,7 +263,12 @@ def test_fallback_changes_live_agent_owner(
 
     assert (
         registry.get_agent("codex").status
-        == AgentStatus.ERROR
+        == AgentStatus.IDLE
+    )
+
+    assert (
+        registry.get_agent("claude-code").status
+        == AgentStatus.IDLE
     )
 
     assert (

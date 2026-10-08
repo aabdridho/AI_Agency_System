@@ -1,3 +1,4 @@
+import inspect
 from pathlib import Path
 
 from app.agents import (
@@ -42,6 +43,37 @@ class ExecutionEngine:
         )
         self.usage_ledger = usage_ledger
 
+    def _run_adapter(
+        self,
+        adapter,
+        root: Path,
+        prompt: str,
+        *,
+        model: str | None,
+        effort: str | None,
+    ):
+        """
+        Backward-compatible adapter invocation.
+
+        Native V0.13 adapters accept model/effort, while existing test
+        doubles and third-party adapters may still expose the older
+        run(repo, prompt, stream=True) signature.
+        """
+        params = inspect.signature(adapter.run).parameters
+        kwargs = {"stream": True}
+
+        if "model" in params:
+            kwargs["model"] = model
+
+        if "effort" in params:
+            kwargs["effort"] = effort
+
+        return adapter.run(
+            root,
+            prompt,
+            **kwargs,
+        )
+
     def _record_usage(
         self,
         *,
@@ -50,6 +82,9 @@ class ExecutionEngine:
         project_name: str,
         task_id: str,
         phase: str,
+        requested_model: str | None = None,
+        requested_effort: str | None = None,
+        goat_tier: str | None = None,
     ) -> None:
         if self.usage_ledger is None:
             return
@@ -62,6 +97,24 @@ class ExecutionEngine:
 
             if metrics is None:
                 return
+
+            updates = {}
+
+            # Prefer a provider-reported canonical model. When the CLI does
+            # not report one (Codex 0.160.1), attribution falls back to the
+            # explicit model that the orchestrator actually requested.
+            if not metrics.model and requested_model:
+                updates["model"] = requested_model
+                updates["model_source"] = "execution_request"
+
+            if requested_effort:
+                updates["requested_effort"] = requested_effort
+
+            if goat_tier:
+                updates["goat_tier"] = goat_tier
+
+            if updates:
+                metrics = metrics.model_copy(update=updates)
 
             self.usage_ledger.append(
                 project_name=project_name,
@@ -322,7 +375,7 @@ class ExecutionEngine:
 
             # Every repair attempt starts from the current clean integration state.
             git.create_or_reset_branch_from(repair_branch, integration_branch)
-            print(f"→ QA repair attempt {attempt} with {owner}...")
+            print(f"â†’ QA repair attempt {attempt} with {owner}...")
 
             self._agent_start(
                 owner,
@@ -332,10 +385,19 @@ class ExecutionEngine:
             )
 
             try:
-                proc = adapter.run(
+                repair_model = (
+                    "gpt-6.1-sol"
+                    if owner == "codex"
+                    else "sonnet"
+                )
+                repair_effort = "medium"
+
+                proc = self._run_adapter(
+                    adapter,
                     root,
                     prompt,
-                    stream=True,
+                    model=repair_model,
+                    effort=repair_effort,
                 )
             except Exception:
                 self._agent_error(
@@ -352,6 +414,8 @@ class ExecutionEngine:
                 project_name=project_name,
                 task_id=task_id,
                 phase=f"qa-repair-{attempt}",
+                requested_model=repair_model,
+                requested_effort=repair_effort,
             )
 
             last_proc = proc
@@ -364,7 +428,7 @@ class ExecutionEngine:
                     if proc.returncode != 0
                     else "repair returned success but produced no repository changes"
                 )
-                print(f"→ QA repair owner {owner} failed ({reason}).")
+                print(f"â†’ QA repair owner {owner} failed ({reason}).")
 
                 self._agent_error(
                     owner,
@@ -418,7 +482,7 @@ class ExecutionEngine:
                     "stderr": "QA repair commit could not be verified in integration.",
                 }
 
-            print(f"✓ QA repair merged into {integration_branch}")
+            print(f"âœ“ QA repair merged into {integration_branch}")
 
             self._agent_idle(owner)
 
@@ -491,7 +555,7 @@ class ExecutionEngine:
 
             if not dry_run:
                 print("\n" + "=" * 72)
-                print(f"[{index}/{total}] {decision.task_id} — {decision.task_text}")
+                print(f"[{index}/{total}] {decision.task_id} â€” {decision.task_text}")
                 print(f"Owner: {decision.primary_owner}")
                 print("=" * 72)
 
@@ -502,7 +566,7 @@ class ExecutionEngine:
                 and decision.primary_owner != "deterministic_qa"
                 and git.task_already_merged(task_branch, integration_branch)
             ):
-                print(f"↷ {decision.task_id} already merged; skipping.")
+                print(f"â†· {decision.task_id} already merged; skipping.")
                 records.append(
                     ExecutionRecord(
                         task_id=decision.task_id,
@@ -577,6 +641,11 @@ class ExecutionEngine:
                         )
                     )
                     print("✗ QA blocked: no deterministic command detected.")
+
+                    # Failure is already preserved in ExecutionRecord.
+                    # Agent live state must not remain stale ERROR forever.
+                    self._agent_idle("deterministic_qa")
+
                     continue
 
                 qa_profile = self._qa_profile_name(decision.task_text)
@@ -634,7 +703,7 @@ class ExecutionEngine:
                     repair_branch = repair["branch"]
 
                     if repair_succeeded:
-                        print("→ Re-running deterministic QA after repair...")
+                        print("â†’ Re-running deterministic QA after repair...")
                         git.create_or_switch_integration(integration_branch)
 
                         self._agent_start(
@@ -698,6 +767,10 @@ class ExecutionEngine:
                         qa_profile=qa_profile,
                     )
                 )
+
+                # ERROR describes the result, not a permanently busy/broken agent.
+                self._agent_idle("deterministic_qa")
+
                 continue
 
             adapter = self.adapters.get(decision.primary_owner)
@@ -730,7 +803,7 @@ class ExecutionEngine:
             git.create_or_reset_branch_from(task_branch, integration_branch)
             base_sha = git.head_sha()
 
-            print(f"→ Starting {decision.primary_owner}...")
+            print(f"â†’ Starting {decision.primary_owner}...")
 
             self._agent_start(
                 decision.primary_owner,
@@ -740,10 +813,12 @@ class ExecutionEngine:
             )
 
             try:
-                proc = adapter.run(
+                proc = self._run_adapter(
+                    adapter,
                     root,
                     prompt,
-                    stream=True,
+                    model=getattr(decision, "primary_model", None),
+                    effort=getattr(decision, "primary_effort", None),
                 )
             except Exception:
                 self._agent_error(
@@ -760,6 +835,9 @@ class ExecutionEngine:
                 project_name=plan.project_name,
                 task_id=decision.task_id,
                 phase="implementation",
+                requested_model=getattr(decision, "primary_model", None),
+                requested_effort=getattr(decision, "primary_effort", None),
+                goat_tier=getattr(decision, "goat_tier", None),
             )
 
             final_proc = proc
@@ -786,7 +864,7 @@ class ExecutionEngine:
                         if proc.returncode != 0
                         else "CLI returned success but produced no repository changes"
                     )
-                    print(f"→ Primary failed ({reason}). Escalating once to {fallback}...")
+                    print(f"â†’ Primary failed ({reason}). Escalating once to {fallback}...")
 
                     # Remove partial/empty primary state before fallback.
                     self._agent_error(
@@ -810,10 +888,12 @@ class ExecutionEngine:
                     )
 
                     try:
-                        final_proc = fallback_adapter.run(
+                        final_proc = self._run_adapter(
+                            fallback_adapter,
                             root,
                             prompt,
-                            stream=True,
+                            model=getattr(decision, "fallback_model", None),
+                            effort=getattr(decision, "fallback_effort", None),
                         )
                     except Exception:
                         self._agent_error(
@@ -830,6 +910,9 @@ class ExecutionEngine:
                         project_name=plan.project_name,
                         task_id=decision.task_id,
                         phase="fallback",
+                        requested_model=getattr(decision, "fallback_model", None),
+                        requested_effort=getattr(decision, "fallback_effort", None),
+                        goat_tier="esc",
                     )
 
                     escalated = True
@@ -939,11 +1022,16 @@ class ExecutionEngine:
                     )
                     continue
 
-                print(f"✓ {decision.task_id} committed and merged into {integration_branch}")
+                print(f"âœ“ {decision.task_id} committed and merged into {integration_branch}")
 
                 self._agent_idle(
                     command_owner,
                 )
+
+                # If fallback succeeded, the failed primary owner must also
+                # leave its transient ERROR state once the task is complete.
+                if escalated and decision.primary_owner != command_owner:
+                    self._agent_idle(decision.primary_owner)
 
                 records.append(
                     ExecutionRecord(
@@ -994,6 +1082,11 @@ class ExecutionEngine:
                         escalation_owner=escalation_owner,
                     )
                 )
+
+                # Failure remains in the execution report; live agents return idle.
+                self._agent_idle(command_owner)
+                if escalated and decision.primary_owner != command_owner:
+                    self._agent_idle(decision.primary_owner)
 
         git.create_or_switch_integration(integration_branch) if not dry_run else None
 

@@ -5,3 +5,6 @@ runtime_data/
 backup_before_workspace_migration/
 *.pyc
 .env
+
+ai_agency_router.egg-info/
+build/
