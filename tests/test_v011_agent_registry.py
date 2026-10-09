@@ -1,7 +1,28 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from api import app
+import app.agents.router as agents_router_module
+
 from app.agents import AgentRegistry, AgentStatus
+
+@pytest.fixture(autouse=True)
+def isolated_agent_api_registry(
+    tmp_path,
+    monkeypatch,
+):
+    registry = AgentRegistry(
+        state_path=tmp_path / "agents.json",
+    )
+
+    monkeypatch.setattr(
+        agents_router_module,
+        "registry",
+        registry,
+    )
+
+    return registry
+
 
 
 def test_registry_contains_bootstrap_agents():

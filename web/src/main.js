@@ -10,7 +10,12 @@ import {
   store, renderCfg, renderSimGauges, setLedger, hideBar, resetTiers,
 } from './ui.js';
 import { runSim, runDemo, tierLabels, SIM_COLUMNS } from './sim.js';
-import { renderProject, replay, LIVE_COLUMNS } from './live.js';
+import {
+  renderProject,
+  renderExecutionSnapshot,
+  replay,
+  LIVE_COLUMNS,
+} from './live.js';
 import { startAgentMonitor } from './agents.js';
 
 let online = false;
@@ -26,6 +31,15 @@ function applyServerTiers(tiers) {
   });
 }
 
+function applyServerConfig(cfg) {
+  store.routingMode =
+    cfg?.mode === 'manual'
+      ? 'manual'
+      : 'auto';
+
+  applyServerTiers(cfg?.tiers);
+}
+
 function onTiersChanged() {
   if (mode === 'sim') resetMap(tierLabels());
   if (!online) { $('cfgState').textContent = 'tersimpan di tab ini saja (api.py offline)'; return; }
@@ -33,8 +47,13 @@ function onTiersChanged() {
   $('cfgState').textContent = 'menyimpan…';
   saveTimer = setTimeout(async () => {
     try {
-      await api.putConfig(store.tiers);
-      $('cfgState').textContent = 'tersimpan ke runtime_data/config/tiers.json';
+      await api.putConfig({
+        mode: store.routingMode,
+        tiers: store.tiers,
+      });
+
+      $('cfgState').textContent =
+        `${store.routingMode.toUpperCase()} · tersimpan ke runtime_data/config/tiers.json`;
     } catch (e) {
       $('cfgState').textContent = `gagal menyimpan: ${e.message}`;
     }
@@ -268,6 +287,150 @@ async function confirmProjectIntake() {
 }
 
 
+function renderIntakeLifecycleState(project) {
+  const approval = $('intakeApprovalWrap');
+
+  if (!approval || !project) return;
+
+  const orchestration = project.orchestration ?? {};
+  const stages = Object.fromEntries(
+    (project.stages ?? []).map((stage) => [
+      stage.key,
+      stage,
+    ]),
+  );
+
+  const documentationDone =
+    stages.documentation?.status === 'done';
+
+  const routingDone =
+    stages.routing?.status === 'done';
+
+  const waitingFor =
+    orchestration.waiting_for ?? null;
+
+  const lines = [];
+
+  if (documentationDone) {
+    lines.push('Requirement approved ✓');
+    lines.push('Documentation complete ✓');
+  }
+
+  if (routingDone) {
+    const decisions =
+      project.routing?.decisions?.length ?? 0;
+
+    lines.push(
+      `Routing complete ✓ · ${decisions} task`
+    );
+  }
+
+  if (
+    waitingFor === 'real_execution_approval'
+  ) {
+    lines.push(
+      'Menunggu approval untuk menjalankan agent real.'
+    );
+
+    approval.innerHTML = `
+      <div class="intakelifecycle">
+        <div class="intakelifecyclestate"></div>
+
+        <button
+          class="go primary"
+          id="intakeExecute"
+          type="button"
+          data-lock
+        >
+          Approve & Run Execution
+        </button>
+      </div>
+    `;
+
+    const state = approval.querySelector(
+      '.intakelifecyclestate'
+    );
+
+    if (state) {
+      lines.forEach((text) => {
+        const row = document.createElement('div');
+        row.textContent = text;
+        state.appendChild(row);
+      });
+    }
+
+    approval.hidden = false;
+
+    $('intakeExecute')?.addEventListener(
+      'click',
+      async () => {
+        if (
+          !online ||
+          store.running ||
+          !project.name
+        ) {
+          return;
+        }
+
+        const button = $('intakeExecute');
+
+        if (button) {
+          button.disabled = true;
+        }
+
+        $('intakeState').textContent =
+          'menjalankan agent real…';
+
+        try {
+          await api.executeProject(project.name);
+
+          const updated =
+            await api.getProject(project.name);
+
+          renderIntakeLifecycleState(updated);
+
+          $('intakeState').textContent =
+            'execution selesai / pipeline diperbarui';
+
+          await enterLive(project.name);
+        } catch (e) {
+          $('intakeState').textContent =
+            `execution gagal: ${e.message}`;
+
+          if (button) {
+            button.disabled = false;
+          }
+        }
+      },
+    );
+
+    return;
+  }
+
+  if (lines.length) {
+    approval.innerHTML = `
+      <div class="intakelifecycle">
+        <div class="intakelifecyclestate"></div>
+      </div>
+    `;
+
+    const state = approval.querySelector(
+      '.intakelifecyclestate'
+    );
+
+    if (state) {
+      lines.forEach((text) => {
+        const row = document.createElement('div');
+        row.textContent = text;
+        state.appendChild(row);
+      });
+    }
+
+    approval.hidden = false;
+  }
+}
+
+
 async function approveProjectIntake() {
   if (
     !online ||
@@ -305,6 +468,11 @@ async function approveProjectIntake() {
       `project ${payload.project_name} dibuat · ` +
       `${payload.generated_docs.join(', ')}`,
     );
+
+    const project =
+      await api.getProject(payload.project_name);
+
+    renderIntakeLifecycleState(project);
 
     await enterLive(payload.project_name);
   } catch (e) {
@@ -507,8 +675,14 @@ async function boot() {
   if (isOnline) {
     try {
       const cfg = await api.getConfig();
-      applyServerTiers(cfg.tiers);
-      $('cfgState').textContent = cfg.source === 'saved' ? 'dimuat dari runtime_data/config/tiers.json' : 'default';
+      applyServerConfig(cfg);
+
+      $('cfgState').textContent =
+        `${store.routingMode.toUpperCase()} · ${
+          cfg.source === 'saved'
+            ? 'dimuat dari runtime_data/config/tiers.json'
+            : 'default'
+        }`;
 
       const billing = await api.getBillingConfig();
       applyBillingConfig(billing);
@@ -534,6 +708,8 @@ async function boot() {
     startAgentMonitor({
       isLive: () => mode === 'live',
       selectedProject: () => $('project')?.value ?? '',
+      renderHistorical: () =>
+        renderExecutionSnapshot(),
     });
   } else {
     await enterSim();

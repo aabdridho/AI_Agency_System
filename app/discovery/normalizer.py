@@ -16,7 +16,14 @@ THEME_SYNONYMS = {
 
 SECTION_SYNONYMS = {
     "hero": ["hero", "hero section"],
-    "about": ["about", "about me", "tentang saya"],
+    "about": [
+        "about",
+        "about me",
+        "about us",
+        "tentang saya",
+        "tentang kami",
+        "tentang perusahaan",
+    ],
     "services": [
         "service",
         "services",
@@ -34,8 +41,22 @@ SECTION_SYNONYMS = {
 }
 
 AUDIENCE_PATTERNS = [
-    r"target(?:\s+website)?(?:\s+ini)?\s+(?:untuk|adalah)\s+([^.!]+)",
-    r"untuk\s+(recruiter[^.!]+)",
+    # "Target utama UMKM dan startup."
+    r"\btarget\s+utama(?:\s+website)?(?:\s+ini)?"
+    r"\s*(?::|adalah|untuk)?\s+([^.!;\n]+)",
+
+    # "Target website ini adalah UMKM."
+    r"\btarget(?:\s+website)?(?:\s+ini)?"
+    r"\s+(?:untuk|adalah)\s+([^.!;\n]+)",
+
+    # "Audiens utama: mahasiswa."
+    r"\b(?:audience|audiens|sasaran)"
+    r"(?:\s+utama)?\s*(?::|adalah)?\s+([^.!;\n]+)",
+
+    # "Ditujukan untuk pemilik UMKM."
+    r"\b(?:ditujukan|diperuntukkan)\s+untuk\s+([^.!;\n]+)",
+
+    r"untuk\s+(recruiter[^.!;\n]+)",
 ]
 
 DEFAULT_CONTACT_FIELDS = ["name", "email", "message"]

@@ -54,8 +54,10 @@ def test_frontend_task_resolves_through_goat_build_tier(tmp_path):
     plan = engine.build_plan(project)
 
     assert plan.decisions[0].goat_tier == "build"
-    assert plan.decisions[0].primary_owner == "codex"
-    assert plan.decisions[0].primary_model == "gpt-6.1-sol"
+    assert plan.decisions[0].primary_owner == "claude_code"
+    assert plan.decisions[0].primary_model == "sonnet"
+    assert plan.decisions[0].primary_effort == "medium"
+    assert plan.decisions[0].fallback_owner == "codex"
     assert plan.decisions[0].fallback_owner == "codex"
 
 def test_max_escalation_is_one(tmp_path):

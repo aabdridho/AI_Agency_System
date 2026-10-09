@@ -17,6 +17,12 @@ FEATURE_KEYWORDS = {
     "admin_dashboard": ["admin dashboard", "dashboard admin"],
     "cms": ["cms", "content management"],
     "database": ["database", "db"],
+    "payment": [
+        "payment",
+        "payments",
+        "pembayaran",
+        "checkout",
+    ],
     "responsive": ["responsive", "mobile friendly", "mobile-first"],
 }
 
@@ -55,10 +61,24 @@ class RequirementExtractor:
 
         negation_patterns = (
             r"\bjangan\b",
+
             r"\btidak\s+perlu\b",
+            r"\btidak\s+memerlukan\b",
+            r"\btidak\s+membutuhkan\b",
+            r"\btidak\s+menggunakan\b",
+
             r"\btak\s+perlu\b",
+            r"\btak\s+memerlukan\b",
+            r"\btak\s+membutuhkan\b",
+
             r"\bnggak\s+perlu\b",
+            r"\bnggak\s+butuh\b",
+            r"\bnggak\s+membutuhkan\b",
+
             r"\bgak\s+perlu\b",
+            r"\bgak\s+butuh\b",
+            r"\bgak\s+membutuhkan\b",
+
             r"\btanpa\b",
             r"\bno\b",
             r"\bwithout\b",

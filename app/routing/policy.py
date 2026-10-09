@@ -3,6 +3,66 @@ from app.routing.models import RoutingDecision
 
 
 class RoutingPolicy:
+    @staticmethod
+    def _risk_for(
+        tier: str,
+        category: str,
+    ) -> str:
+        if tier == "deep":
+            return "high"
+
+        if category in {
+            "architecture",
+            "qa",
+        }:
+            return "high"
+
+        if tier in {
+            "quick",
+        }:
+            return "low"
+
+        return "medium"
+
+    @staticmethod
+    def _checks_for(
+        tier: str,
+        category: str,
+    ) -> list[str]:
+        if category == "qa":
+            return [
+                "tests",
+                "typecheck",
+                "lint",
+                "review",
+            ]
+
+        if tier == "quick":
+            return [
+                "targeted_tests",
+                "lint",
+            ]
+
+        if tier == "deep":
+            return [
+                "tests",
+                "typecheck",
+                "lint",
+                "review",
+            ]
+
+        if category == "frontend":
+            return [
+                "tests",
+                "typecheck",
+                "lint",
+            ]
+
+        return [
+            "tests",
+            "lint",
+        ]
+
     """
     V0.13 GOAT routing policy.
 
@@ -40,16 +100,41 @@ class RoutingPolicy:
             category,
         )
 
-        primary = self.goat_config.resolve(tier)
-        escalation = self.goat_config.resolve("esc")
+        primary = self.goat_config.resolve_for_task(
+            tier,
+            category,
+        )
+
+        escalation = self.goat_config.resolve_escalation(
+            primary.owner,
+        )
+
+        risk = self._risk_for(
+            tier,
+            category,
+        )
+
+        checks = self._checks_for(
+            tier,
+            category,
+        )
 
         # QA stays zero-token/deterministic first.
+        # Because deterministic QA has no provider family, remediation uses
+        # the canonical escalation tier rather than cross-provider inversion.
         if category == "qa":
+            escalation = self.goat_config.resolve("esc")
+
             return RoutingDecision(
                 task_id=task_id,
                 task_text=task_text,
                 category=category,
                 goat_tier="review",
+                route="review",
+                risk=risk,
+                checks=checks,
+                triage_mode="rules",
+                verifier="deterministic_qa",
                 primary_owner="deterministic_qa",
                 primary_model=None,
                 primary_effort=None,
@@ -89,6 +174,11 @@ class RoutingPolicy:
             task_text=task_text,
             category=category,
             goat_tier=tier,
+            route=tier,
+            risk=risk,
+            checks=checks,
+            triage_mode="rules",
+            verifier="deterministic_qa",
             primary_owner=primary.owner,
             primary_model=primary.executable_model,
             primary_effort=primary.effort,

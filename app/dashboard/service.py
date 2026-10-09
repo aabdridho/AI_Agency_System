@@ -59,6 +59,53 @@ def _read_json(path: Path) -> dict[str, Any] | None:
         return None
 
 
+def _read_jsonl(
+    path: Path,
+) -> list[dict[str, Any]] | None:
+    if not path.is_file():
+        return None
+
+    rows: list[dict[str, Any]] = []
+
+    try:
+        for raw in path.read_text(
+            encoding="utf-8"
+        ).splitlines():
+            raw = raw.strip()
+
+            if not raw:
+                continue
+
+            try:
+                value = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+
+            if isinstance(value, dict):
+                rows.append(value)
+    except OSError:
+        return None
+
+    return rows
+
+
+def _read_usage_records(
+    path: Path,
+) -> list[dict[str, Any]] | None:
+    if not path.is_file():
+        return None
+
+    try:
+        records = load_usage_records(path)
+    except (OSError, ValueError):
+        return None
+
+    return [
+        record.model_dump(mode="json")
+        for record in records
+    ]
+
+
 class DashboardService:
     def __init__(self, runtime_root: Path, output_root: Path):
         self.runtime_root = Path(runtime_root)
@@ -85,6 +132,12 @@ class DashboardService:
         return {
             "routing": _read_json(rt / "routing" / name / "routing_plan.json"),
             "execution": _read_json(rt / "execution" / name / "execution_report.json"),
+            "execution_events": _read_jsonl(
+                rt / "execution" / name / "events.jsonl"
+            ),
+            "usage_records": _read_usage_records(
+                rt / "usage" / name / "usage.jsonl"
+            ),
             "delivery": _read_json(rt / "delivery" / name / "delivery_report.json"),
             "deployment_plan": _read_json(rt / "deployment" / name / "deployment_plan.json"),
             "deployment_result": _read_json(rt / "deployment" / name / "deployment_result.json"),
@@ -322,7 +375,11 @@ class DashboardService:
                 return {"source": "saved", **TierConfig.model_validate(data).model_dump()}
             except ValueError:
                 pass
-        return {"source": "default", "tiers": None}
+        return {
+            "source": "default",
+            "mode": "auto",
+            "tiers": None,
+        }
 
     def save_config(self, cfg: TierConfig) -> dict[str, Any]:
         path = self._config_path()

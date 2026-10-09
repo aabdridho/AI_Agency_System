@@ -82,6 +82,16 @@ class FakeApprovalOrchestrator:
             Path("architecture.md"),
         ]
 
+    def run_until_blocked(
+        self,
+        project_name,
+        *,
+        approve_real_execution=False,
+    ):
+        assert project_name == "demo-site"
+        assert approve_real_execution is False
+        return None
+
 
 def test_approve_intake_generates_documentation():
     fake = FakeApprovalOrchestrator()

@@ -7,7 +7,10 @@ from app.routing.policy import RoutingPolicy
 def save_config(path, tiers):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        json.dumps({"tiers": tiers}),
+        json.dumps({
+            "mode": "manual",
+            "tiers": tiers,
+        }),
         encoding="utf-8",
     )
 

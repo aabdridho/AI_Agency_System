@@ -55,7 +55,12 @@ def test_project_with_tasks_gets_preview_routing_without_writing(env):
     detail = client.get("/api/projects/kafe-site").json()
     assert detail["routing_source"] == "preview"
     owners = [d["primary_owner"] for d in detail["routing"]["decisions"]]
-    assert owners == ["codex", "codex", "codex", "deterministic_qa"]
+    assert owners == [
+        "codex",
+        "claude_code",
+        "codex",
+        "deterministic_qa",
+    ]
     assert not (runtime / "routing").exists()  # preview never writes
 
 
@@ -126,15 +131,34 @@ def test_traversal_name_never_reads_outside_root(env, tmp_path):
 
 def test_config_defaults_then_roundtrip(env):
     runtime, _, client = env
-    assert client.get("/api/config").json() == {"source": "default", "tiers": None}
+    assert client.get("/api/config").json() == {
+        "source": "default",
+        "mode": "auto",
+        "tiers": None,
+    }
 
-    body = {"tiers": {"triage": {"model": "rules", "effort": "low"},
-                      "deep": {"model": "opus", "effort": "high"}}}
+    body = {
+        "mode": "manual",
+        "tiers": {
+            "triage": {
+                "model": "rules",
+                "effort": "low",
+            },
+            "deep": {
+                "model": "opus",
+                "effort": "high",
+            },
+        },
+    }
     assert client.put("/api/config", json=body).status_code == 200
     assert (runtime / "config" / "tiers.json").is_file()
     got = client.get("/api/config").json()
     assert got["source"] == "saved"
-    assert got["tiers"]["deep"] == {"model": "opus", "effort": "high"}
+    assert got["mode"] == "manual"
+    assert got["tiers"]["deep"] == {
+        "model": "opus",
+        "effort": "high",
+    }
 
 
 @pytest.mark.parametrize("tiers", [

@@ -39,7 +39,20 @@ class RequirementDiscoveryEngine:
         confirmed = merge_items(confirmed + ref_confirmed)
 
         existing_keys = {x.key for x in confirmed} | {x.key for x in inferred}
-        unknown, questions, _ = self.gap_detector.detect(project_type, existing_keys)
+
+        base_unknown, base_questions, _ = self.gap_detector.detect(
+            project_type,
+            existing_keys,
+        )
+
+        questions = self.question_generator.contextualize(
+            project_type,
+            base_unknown,
+            confirmed,
+            base_questions,
+        )
+
+        unknown = list(base_unknown)
         unknown.extend(ref_unknown)
 
         if any(x.key == "reference_preferences" for x in ref_unknown):
@@ -50,7 +63,7 @@ class RequirementDiscoveryEngine:
 
         internal_decisions = [
             RequirementItem(
-                key="discovery_engine_version", value="0.3-stable",
+                key="discovery_engine_version", value="0.4-context-aware",
                 status="INTERNAL_DECISION", source="system",
                 blocking=False, confidence=1.0
             )

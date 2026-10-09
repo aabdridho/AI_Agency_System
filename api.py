@@ -184,7 +184,14 @@ def approve_project_intake(
             project_name,
             approved,
         )
-    except ValueError as exc:
+
+        # Documentation selesai. Lanjutkan semua safe automatic
+        # stage sampai membutuhkan approval real execution.
+        orchestrator.run_until_blocked(
+            project_name,
+            approve_real_execution=False,
+        )
+    except (ValueError, RuntimeError) as exc:
         raise HTTPException(409, str(exc))
     except FileExistsError as exc:
         raise HTTPException(409, str(exc))
@@ -197,6 +204,34 @@ def approve_project_intake(
             for path in generated
         ],
     )
+
+
+@app.post("/api/projects/{name}/execute")
+def execute_project_from_control_room(
+    name: str,
+    orchestrator: ProjectOrchestrator = Depends(get_orchestrator),
+):
+    if not valid_name(name):
+        raise HTTPException(
+            422,
+            "Nama project tidak valid.",
+        )
+
+    try:
+        return orchestrator.run_until_blocked(
+            name,
+            approve_real_execution=True,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            404,
+            str(exc),
+        )
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(
+            409,
+            str(exc),
+        )
 
 
 @app.get("/api/projects", response_model=list[ProjectSummary])

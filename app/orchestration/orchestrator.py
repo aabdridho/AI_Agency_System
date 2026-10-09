@@ -23,6 +23,7 @@ from app.execution.engine import ExecutionEngine
 from app.execution.savings import write_project_savings_summary
 from app.execution.storage import ExecutionStorage
 from app.execution.usage import UsageLedger
+from app.execution.events import ExecutionEventLedger
 from app.orchestration.models import OrchestrationState
 from app.orchestration.state import OrchestrationStateStore
 from app.routing.engine import RoutingEngine
@@ -682,8 +683,14 @@ class ProjectOrchestrator:
             / "usage"
         )
 
+        event_ledger = ExecutionEventLedger(
+            self.runtime_root
+            / "execution"
+        )
+
         report = ExecutionEngine(
             usage_ledger=usage_ledger,
+            event_ledger=event_ledger,
         ).execute(
             plan,
             root,
