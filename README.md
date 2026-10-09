@@ -1,4 +1,4 @@
-# AI Agency System V0.14
+# AI Agency System V0.16
 
 AI Agency System is a local-first AI project orchestration system for turning client briefs into approved requirements, documentation, GOAT-routed tasks, implementation, deterministic QA, delivery readiness, economics, and controlled deployment approval.
 
