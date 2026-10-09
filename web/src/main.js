@@ -14,6 +14,7 @@ import {
   renderProject,
   renderExecutionSnapshot,
   replay,
+  currentProject,
   LIVE_COLUMNS,
 } from './live.js';
 import { startAgentMonitor } from './agents.js';
@@ -708,6 +709,8 @@ async function boot() {
     startAgentMonitor({
       isLive: () => mode === 'live',
       selectedProject: () => $('project')?.value ?? '',
+      selectedRunId: () =>
+        currentProject()?.execution_run_id ?? '',
       renderHistorical: () =>
         renderExecutionSnapshot(),
     });

@@ -5,6 +5,7 @@ import {
   setNodeLabel,
 } from './map.js';
 import { store } from './ui.js';
+import { belongsToExecution } from './agent_scope.js';
 
 
 const POLL_MS = 650;
@@ -40,19 +41,6 @@ const short = (value, max = 24) => {
 
   return `${text.slice(0, max - 1)}…`;
 };
-
-
-function belongsToProject(agent, selectedProject) {
-  if (!agent.project) {
-    return true;
-  }
-
-  if (!selectedProject) {
-    return true;
-  }
-
-  return agent.project === selectedProject;
-}
 
 
 function applyAgent(agent) {
@@ -139,6 +127,7 @@ function applyAgent(agent) {
 export function renderAgentRuntime(
   agents,
   selectedProject,
+  selectedRunId,
   renderHistorical,
 ) {
   /*
@@ -152,9 +141,10 @@ export function renderAgentRuntime(
   const relevant = agents.filter(
     (agent) =>
       AGENT_META[agent.id]
-      && belongsToProject(
+      && belongsToExecution(
         agent,
         selectedProject,
+        selectedRunId,
       ),
   );
 
@@ -198,6 +188,7 @@ async function poll(context) {
     renderAgentRuntime(
       agents,
       context.selectedProject(),
+      context.selectedRunId(),
       context.renderHistorical,
     );
   } catch {

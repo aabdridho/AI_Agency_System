@@ -181,7 +181,12 @@ class ExecutionEngine:
         task_id: str,
         phase: str = "task",
     ) -> str:
-        return f"{phase}:{project_name}:{task_id}"
+        base = f"{phase}:{project_name}:{task_id}"
+
+        if self.run_id:
+            return f"{self.run_id}:{base}"
+
+        return base
 
     def _set_agent_state(
         self,
@@ -204,6 +209,7 @@ class ExecutionEngine:
                     status=status,
                     current_task=task_id,
                     project=project_name,
+                    run_id=self.run_id,
                     session_id=session_id,
                 ),
             )
@@ -243,6 +249,7 @@ class ExecutionEngine:
                 AgentHeartbeat(
                     current_task=task_id,
                     project=project_name,
+                    run_id=self.run_id,
                     session_id=session_id,
                 ),
             )

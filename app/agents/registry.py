@@ -153,6 +153,7 @@ class AgentRegistry:
         agent.status = payload.status
         agent.current_task = payload.current_task
         agent.project = payload.project
+        agent.run_id = payload.run_id
         agent.session_id = payload.session_id
         agent.last_activity = utc_now_iso()
 
@@ -182,6 +183,9 @@ class AgentRegistry:
 
         if payload.project is not None:
             agent.project = payload.project
+
+        if payload.run_id is not None:
+            agent.run_id = payload.run_id
 
         if payload.session_id is not None:
             agent.session_id = payload.session_id
