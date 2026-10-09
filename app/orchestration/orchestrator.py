@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import shutil
 from pathlib import Path
+from uuid import uuid4
 from typing import Any
 
 from app.delivery.checker import DeliveryChecker
@@ -23,6 +24,7 @@ from app.execution.engine import ExecutionEngine
 from app.execution.savings import write_project_savings_summary
 from app.execution.storage import ExecutionStorage
 from app.execution.usage import UsageLedger
+from app.execution.events import ExecutionEventLedger
 from app.orchestration.models import OrchestrationState
 from app.orchestration.state import OrchestrationStateStore
 from app.routing.engine import RoutingEngine
@@ -677,13 +679,22 @@ class ProjectOrchestrator:
                 + ", ".join(missing)
             )
 
+        run_id = uuid4().hex
+
         usage_ledger = UsageLedger(
             self.runtime_root
             / "usage"
         )
 
+        event_ledger = ExecutionEventLedger(
+            self.runtime_root
+            / "execution"
+        )
+
         report = ExecutionEngine(
             usage_ledger=usage_ledger,
+            event_ledger=event_ledger,
+            run_id=run_id,
         ).execute(
             plan,
             root,

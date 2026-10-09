@@ -10,7 +10,12 @@ import {
   store, renderCfg, renderSimGauges, setLedger, hideBar, resetTiers,
 } from './ui.js';
 import { runSim, runDemo, tierLabels, SIM_COLUMNS } from './sim.js';
-import { renderProject, replay, LIVE_COLUMNS } from './live.js';
+import {
+  renderProject,
+  renderExecutionSnapshot,
+  replay,
+  LIVE_COLUMNS,
+} from './live.js';
 import { startAgentMonitor } from './agents.js';
 
 let online = false;
@@ -26,6 +31,15 @@ function applyServerTiers(tiers) {
   });
 }
 
+function applyServerConfig(cfg) {
+  store.routingMode =
+    cfg?.mode === 'manual'
+      ? 'manual'
+      : 'auto';
+
+  applyServerTiers(cfg?.tiers);
+}
+
 function onTiersChanged() {
   if (mode === 'sim') resetMap(tierLabels());
   if (!online) { $('cfgState').textContent = 'tersimpan di tab ini saja (api.py offline)'; return; }
@@ -33,8 +47,13 @@ function onTiersChanged() {
   $('cfgState').textContent = 'menyimpan…';
   saveTimer = setTimeout(async () => {
     try {
-      await api.putConfig(store.tiers);
-      $('cfgState').textContent = 'tersimpan ke runtime_data/config/tiers.json';
+      await api.putConfig({
+        mode: store.routingMode,
+        tiers: store.tiers,
+      });
+
+      $('cfgState').textContent =
+        `${store.routingMode.toUpperCase()} · tersimpan ke runtime_data/config/tiers.json`;
     } catch (e) {
       $('cfgState').textContent = `gagal menyimpan: ${e.message}`;
     }
@@ -113,6 +132,412 @@ function onBillingChanged() {
   }, 400);
 }
 
+// ---------- local project intake ----------
+
+let intakeDiscovery = null;
+let intakeProjectName = '';
+
+function blockingRequirements(result) {
+  return [
+    ...(result.inferred ?? []).filter((item) => item.blocking),
+    ...(result.unknown ?? []).filter((item) => item.blocking),
+  ];
+}
+
+function intakeReferences() {
+  return $('intakeReferences').value
+    .split(/\r?\n/)
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+function renderIntakeResult(payload) {
+  const result = payload.discovery;
+  const questions = result.questions ?? [];
+  const blockers = blockingRequirements(result);
+
+  intakeDiscovery = result;
+  intakeProjectName = payload.project_name;
+
+  $('intakeResult').hidden = false;
+
+  const confirmedCount = result.confirmed?.length ?? 0;
+  const unknownCount = result.unknown?.length ?? 0;
+
+  $('intakeSummary').textContent =
+    `${payload.project_name} · ${result.project_type} · ` +
+    `${confirmedCount} confirmed · ${unknownCount} unknown · ` +
+    (
+      result.ready_for_final_approval
+        ? 'ready for final approval'
+        : 'butuh konfirmasi'
+    );
+
+  const wrap = $('intakeQuestionWrap');
+  const list = $('intakeQuestions');
+  const approval = $('intakeApprovalWrap');
+
+  list.replaceChildren();
+
+  blockers.forEach((item, index) => {
+    const field = document.createElement('label');
+    field.className = 'intakequestion';
+
+    const title = document.createElement('span');
+    title.textContent =
+      questions[index] ??
+      item.key.replaceAll('_', ' ');
+
+    const input = document.createElement('textarea');
+    input.rows = 2;
+    input.dataset.requirementKey = item.key;
+    input.placeholder = `Jawaban untuk ${item.key}`;
+
+    if (
+      item.value !== null &&
+      item.value !== undefined
+    ) {
+      input.value = Array.isArray(item.value)
+        ? item.value.join(', ')
+        : String(item.value);
+    }
+
+    field.append(title, input);
+    list.appendChild(field);
+  });
+
+  wrap.hidden =
+    result.ready_for_final_approval ||
+    blockers.length === 0;
+
+  approval.hidden =
+    !result.ready_for_final_approval;
+}
+
+async function confirmProjectIntake() {
+  if (
+    !online ||
+    store.running ||
+    !intakeDiscovery ||
+    !intakeProjectName
+  ) {
+    return;
+  }
+
+  const inputs = [
+    ...document.querySelectorAll(
+      '#intakeQuestions [data-requirement-key]',
+    ),
+  ];
+
+  const answers = {};
+
+  for (const input of inputs) {
+    const value = input.value.trim();
+
+    if (!value) {
+      input.focus();
+      $('intakeState').textContent =
+        'semua jawaban wajib diisi';
+      return;
+    }
+
+    answers[input.dataset.requirementKey] = value;
+  }
+
+  $('intakeConfirm').disabled = true;
+  $('intakeState').textContent =
+    'menyimpan konfirmasi…';
+
+  try {
+    const payload = await api.confirmProjectIntake(
+      intakeProjectName,
+      intakeDiscovery,
+      answers,
+    );
+
+    renderIntakeResult(payload);
+
+    $('intakeState').textContent =
+      payload.discovery.ready_for_final_approval
+        ? 'discovery lengkap · menunggu approval'
+        : 'masih membutuhkan konfirmasi';
+
+    await line(
+      'discovery',
+      payload.discovery.ready_for_final_approval
+        ? 't-pass'
+        : 't-warn',
+      payload.discovery.ready_for_final_approval
+        ? 'semua blocker discovery selesai'
+        : 'konfirmasi disimpan',
+    );
+  } catch (e) {
+    $('intakeState').textContent =
+      `gagal: ${e.message}`;
+
+    await line(
+      'discovery',
+      't-fail',
+      `konfirmasi gagal: ${e.message}`,
+    );
+  } finally {
+    $('intakeConfirm').disabled = false;
+  }
+}
+
+
+function renderIntakeLifecycleState(project) {
+  const approval = $('intakeApprovalWrap');
+
+  if (!approval || !project) return;
+
+  const orchestration = project.orchestration ?? {};
+  const stages = Object.fromEntries(
+    (project.stages ?? []).map((stage) => [
+      stage.key,
+      stage,
+    ]),
+  );
+
+  const documentationDone =
+    stages.documentation?.status === 'done';
+
+  const routingDone =
+    stages.routing?.status === 'done';
+
+  const waitingFor =
+    orchestration.waiting_for ?? null;
+
+  const lines = [];
+
+  if (documentationDone) {
+    lines.push('Requirement approved ✓');
+    lines.push('Documentation complete ✓');
+  }
+
+  if (routingDone) {
+    const decisions =
+      project.routing?.decisions?.length ?? 0;
+
+    lines.push(
+      `Routing complete ✓ · ${decisions} task`
+    );
+  }
+
+  if (
+    waitingFor === 'real_execution_approval'
+  ) {
+    lines.push(
+      'Menunggu approval untuk menjalankan agent real.'
+    );
+
+    approval.innerHTML = `
+      <div class="intakelifecycle">
+        <div class="intakelifecyclestate"></div>
+
+        <button
+          class="go primary"
+          id="intakeExecute"
+          type="button"
+          data-lock
+        >
+          Approve & Run Execution
+        </button>
+      </div>
+    `;
+
+    const state = approval.querySelector(
+      '.intakelifecyclestate'
+    );
+
+    if (state) {
+      lines.forEach((text) => {
+        const row = document.createElement('div');
+        row.textContent = text;
+        state.appendChild(row);
+      });
+    }
+
+    approval.hidden = false;
+
+    $('intakeExecute')?.addEventListener(
+      'click',
+      async () => {
+        if (
+          !online ||
+          store.running ||
+          !project.name
+        ) {
+          return;
+        }
+
+        const button = $('intakeExecute');
+
+        if (button) {
+          button.disabled = true;
+        }
+
+        $('intakeState').textContent =
+          'menjalankan agent real…';
+
+        try {
+          await api.executeProject(project.name);
+
+          const updated =
+            await api.getProject(project.name);
+
+          renderIntakeLifecycleState(updated);
+
+          $('intakeState').textContent =
+            'execution selesai / pipeline diperbarui';
+
+          await enterLive(project.name);
+        } catch (e) {
+          $('intakeState').textContent =
+            `execution gagal: ${e.message}`;
+
+          if (button) {
+            button.disabled = false;
+          }
+        }
+      },
+    );
+
+    return;
+  }
+
+  if (lines.length) {
+    approval.innerHTML = `
+      <div class="intakelifecycle">
+        <div class="intakelifecyclestate"></div>
+      </div>
+    `;
+
+    const state = approval.querySelector(
+      '.intakelifecyclestate'
+    );
+
+    if (state) {
+      lines.forEach((text) => {
+        const row = document.createElement('div');
+        row.textContent = text;
+        state.appendChild(row);
+      });
+    }
+
+    approval.hidden = false;
+  }
+}
+
+
+async function approveProjectIntake() {
+  if (
+    !online ||
+    store.running ||
+    !intakeDiscovery ||
+    !intakeProjectName
+  ) {
+    return;
+  }
+
+  if (!intakeDiscovery.ready_for_final_approval) {
+    $('intakeState').textContent =
+      'discovery belum siap approval';
+    return;
+  }
+
+  $('intakeApprove').disabled = true;
+  $('intakeState').textContent =
+    'membuat dokumentasi project…';
+
+  try {
+    const payload = await api.approveProjectIntake(
+      intakeProjectName,
+      intakeDiscovery,
+    );
+
+    intakeDiscovery = payload.discovery;
+
+    $('intakeState').textContent =
+      `approved · ${payload.generated_docs.length} dokumen dibuat`;
+
+    await line(
+      'documentation',
+      't-pass',
+      `project ${payload.project_name} dibuat · ` +
+      `${payload.generated_docs.join(', ')}`,
+    );
+
+    const project =
+      await api.getProject(payload.project_name);
+
+    renderIntakeLifecycleState(project);
+
+    await enterLive(payload.project_name);
+  } catch (e) {
+    $('intakeState').textContent =
+      `gagal: ${e.message}`;
+
+    await line(
+      'documentation',
+      't-fail',
+      `approval gagal: ${e.message}`,
+    );
+  } finally {
+    $('intakeApprove').disabled = false;
+  }
+}
+
+
+async function submitProjectIntake(event) {
+  event.preventDefault();
+
+  if (!online || store.running) return;
+
+  const projectName = $('intakeProject').value.trim();
+  const brief = $('intakeBrief').value.trim();
+
+  if (!projectName || !brief) return;
+
+  $('intakeSubmit').disabled = true;
+  $('intakeState').textContent = 'menganalisis brief…';
+
+  try {
+    const payload = await api.analyzeProjectIntake(
+      projectName,
+      brief,
+      intakeReferences(),
+    );
+
+    renderIntakeResult(payload);
+
+    $('intakeState').textContent =
+      payload.discovery.ready_for_final_approval
+        ? 'discovery siap untuk approval'
+        : 'discovery membutuhkan konfirmasi';
+
+    await line(
+      'discovery',
+      payload.discovery.ready_for_final_approval
+        ? 't-pass'
+        : 't-warn',
+      `brief ${payload.project_name} selesai dianalisis`,
+    );
+  } catch (e) {
+    $('intakeState').textContent = `gagal: ${e.message}`;
+
+    await line(
+      'discovery',
+      't-fail',
+      `intake gagal: ${e.message}`,
+    );
+  } finally {
+    $('intakeSubmit').disabled = false;
+  }
+}
+
+
 // ---------- modes ----------
 function setConn(isOnline) {
   online = isOnline;
@@ -141,7 +566,7 @@ async function enterSim() {
   renderSimGauges();
 }
 
-async function enterLive() {
+async function enterLive(preferredProject = '') {
   if (!online) return;
   showMode('live');
   initMap(LIVE);
@@ -160,10 +585,21 @@ async function enterLive() {
   projects.forEach((p) => {
     const o = document.createElement('option');
     o.value = p.name;
-    const last = [...p.stages].reverse().find((s) => s.status !== 'todo');
-    o.textContent = `${p.name}${last ? ` · ${last.key} ${last.status}` : ''}`;
+    const last = [...p.stages].reverse().find(
+      (stage) => stage.status !== 'todo',
+    );
+    o.textContent =
+      `${p.name}${last ? ` · ${last.key} ${last.status}` : ''}`;
     sel.appendChild(o);
   });
+
+  if (
+    preferredProject &&
+    projects.some((project) => project.name === preferredProject)
+  ) {
+    sel.value = preferredProject;
+  }
+
   await loadProject(sel.value);
 }
 
@@ -189,6 +625,21 @@ async function loadProject(name) {
 // ---------- wiring ----------
 function wire() {
   $('speed').addEventListener('change', (e) => setSpeed(e.target.value));
+
+  $('intakeForm')?.addEventListener(
+    'submit',
+    submitProjectIntake,
+  );
+
+  $('intakeConfirm')?.addEventListener(
+    'click',
+    confirmProjectIntake,
+  );
+
+  $('intakeApprove')?.addEventListener(
+    'click',
+    approveProjectIntake,
+  );
   $('modeSim').addEventListener('click', () => { if (!store.running && mode !== 'sim') enterSim(); });
   $('modeLive').addEventListener('click', () => { if (!store.running && mode !== 'live') enterLive(); });
   $('project').addEventListener('change', (e) => { if (!store.running) loadProject(e.target.value); });
@@ -224,8 +675,14 @@ async function boot() {
   if (isOnline) {
     try {
       const cfg = await api.getConfig();
-      applyServerTiers(cfg.tiers);
-      $('cfgState').textContent = cfg.source === 'saved' ? 'dimuat dari runtime_data/config/tiers.json' : 'default';
+      applyServerConfig(cfg);
+
+      $('cfgState').textContent =
+        `${store.routingMode.toUpperCase()} · ${
+          cfg.source === 'saved'
+            ? 'dimuat dari runtime_data/config/tiers.json'
+            : 'default'
+        }`;
 
       const billing = await api.getBillingConfig();
       applyBillingConfig(billing);
@@ -251,6 +708,8 @@ async function boot() {
     startAgentMonitor({
       isLive: () => mode === 'live',
       selectedProject: () => $('project')?.value ?? '',
+      renderHistorical: () =>
+        renderExecutionSnapshot(),
     });
   } else {
     await enterSim();

@@ -1,11 +1,11 @@
-﻿# AI Agency System V0.14
+# AI Agency System V0.16
 
 AI Agency System is a local-first AI project orchestration system for turning client briefs into approved requirements, documentation, GOAT-routed tasks, implementation, deterministic QA, delivery readiness, economics, and controlled deployment approval.
 
 ## Current Release
 
-- Version: `0.14.0`
-- Git tag: `v0.14`
+- Version: `0.16.0`
+- Git tag: `v0.16`
 - Primary CLI: `python agency.py`
 - Runtime state: `runtime_data/`
 - Production deployment requires explicit approval.
@@ -76,7 +76,7 @@ Equivalent cost must not be presented as an actual provider charge when billing 
 
 ## Control Room
 
-For V0.14 projects, orchestration state is authoritative for pipeline-stage status.
+For V0.16 projects, orchestration state and execution telemetry are authoritative for pipeline-stage and execution status.
 
 Stages: `discovery`, `documentation`, `routing`, `execution`, `delivery`, `economics`, `deployment`.
 
@@ -85,6 +85,21 @@ Stages: `discovery`, `documentation`, `routing`, `execution`, `delivery`, `econo
 Operational routing, execution, delivery, deployment, handoff, usage, and orchestration data remain under `runtime_data/` and outside client repositories.
 
 ## Release History
+
+### V0.16 - Agent Control Room, GOAT Routing and Execution Observability
+
+- Local Control Room project intake and discovery confirmation
+- GOAT AUTO/MANUAL domain-aware routing
+- Real execution-event driven agent map
+- Per-task token and model usage observability
+- Execution `run_id`, event `event_id`, ordered event `sequence`
+- Immutable per-run execution report history
+- Latest-run execution and usage filtering in Control Room
+- Unique `usage_id` for provider-call auditability
+- Cumulative project economics kept separate from latest-run observability
+- Context-aware discovery extraction hardening
+- Version consistency `0.16.0`
+
 
 ### V0.14 - Project Orchestrator
 

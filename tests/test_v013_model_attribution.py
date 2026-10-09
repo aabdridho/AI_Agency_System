@@ -21,7 +21,9 @@ def test_backend_routing_has_explicit_codex_model(tmp_path):
     assert decision.primary_owner == "codex"
     assert decision.primary_model == "gpt-6.1-sol"
     assert decision.primary_effort == "medium"
-    assert decision.fallback_model == "gpt-6-astra"
+    assert decision.fallback_owner == "claude_code"
+    assert decision.fallback_model == "fable"
+    assert decision.fallback_effort == "high"
 
 
 def test_frontend_build_task_uses_runtime_build_tier(tmp_path):
@@ -37,8 +39,8 @@ def test_frontend_build_task_uses_runtime_build_tier(tmp_path):
     )
 
     assert decision.goat_tier == "build"
-    assert decision.primary_owner == "codex"
-    assert decision.primary_model == "gpt-6.1-sol"
+    assert decision.primary_owner == "claude_code"
+    assert decision.primary_model == "sonnet"
     assert decision.primary_effort == "medium"
     assert decision.fallback_model == "gpt-6-astra"
 

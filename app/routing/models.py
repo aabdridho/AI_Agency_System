@@ -13,8 +13,15 @@ class RoutingDecision(BaseModel):
     task_text: str
     category: str
 
-    # V0.13 GOAT capability tier chosen independently from provider/model.
+    # GOAT capability route chosen before provider/model resolution.
     goat_tier: str = "build"
+
+    # V0.16 observable triage contract.
+    route: str = "build"
+    risk: Literal["low", "medium", "high"] = "medium"
+    checks: list[str] = Field(default_factory=list)
+    triage_mode: Literal["rules", "model"] = "rules"
+    verifier: str = "deterministic_qa"
 
     primary_owner: Owner
     fallback_owner: Owner | None = None

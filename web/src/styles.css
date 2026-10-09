@@ -251,3 +251,181 @@ td.mono{white-space:nowrap}
   color:var(--pass);
   font-weight:600;
 }
+
+
+/* ---------- V0.16 local project intake ---------- */
+
+.intakewrap{
+  margin-bottom:0;
+}
+
+.intakeform{
+  display:grid;
+  gap:10px;
+}
+
+.intakefields{
+  display:grid;
+  grid-template-columns:minmax(180px,.7fr) minmax(280px,1.5fr);
+  gap:10px;
+}
+
+.intakefields label{
+  display:grid;
+  gap:5px;
+  font-size:.72rem;
+  color:var(--muted);
+}
+
+.intakefields label>span{
+  font-family:var(--mono);
+}
+
+.intakefields .intakebrief{
+  grid-row:span 2;
+}
+
+.intakefields .intakerefs{
+  grid-column:1;
+}
+
+.intakefields input,
+.intakefields textarea{
+  width:100%;
+  min-width:0;
+  box-sizing:border-box;
+  font-family:var(--mono);
+  font-size:.76rem;
+  background:var(--panel2);
+  color:var(--fg);
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:8px 10px;
+}
+
+.intakefields textarea{
+  resize:vertical;
+  line-height:1.45;
+}
+
+.intakefields input::placeholder,
+.intakefields textarea::placeholder{
+  color:var(--muted);
+}
+
+.intakeactions{
+  display:flex;
+  justify-content:flex-end;
+}
+
+.intakeresult{
+  margin-top:12px;
+  padding-top:12px;
+  border-top:1px solid var(--line);
+}
+
+.intakeresult h3{
+  margin:10px 0 6px;
+  font-size:.72rem;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  color:var(--warn);
+}
+
+.intakeresult ol{
+  margin:0;
+  padding-left:22px;
+  font-family:var(--mono);
+  font-size:.72rem;
+  line-height:1.6;
+}
+
+@media (max-width:760px){
+  .intakefields{
+    grid-template-columns:1fr;
+  }
+
+  .intakefields .intakebrief,
+  .intakefields .intakerefs{
+    grid-column:auto;
+    grid-row:auto;
+  }
+}
+
+
+/* ---------- V0.16 discovery confirmation ---------- */
+
+.intakequestions{
+  display:grid;
+  gap:10px;
+}
+
+.intakequestion{
+  display:grid;
+  gap:5px;
+}
+
+.intakequestion>span{
+  font-family:var(--mono);
+  font-size:.74rem;
+  color:var(--fg);
+}
+
+.intakequestion textarea{
+  width:100%;
+  min-width:0;
+  box-sizing:border-box;
+  resize:vertical;
+  font-family:var(--mono);
+  font-size:.76rem;
+  line-height:1.45;
+  background:var(--panel2);
+  color:var(--fg);
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:8px 10px;
+}
+
+.intakeconfirmactions{
+  display:flex;
+  justify-content:flex-end;
+  margin-top:10px;
+}
+
+.intakeapproval{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-top:12px;
+  padding:12px;
+  border:1px solid var(--pass);
+  border-radius:10px;
+}
+
+
+/* ---------- V0.16 unified lifecycle ---------- */
+
+.intakelifecycle{
+  display:flex;
+  width:100%;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+}
+
+.intakelifecyclestate{
+  display:grid;
+  gap:4px;
+  font-family:var(--mono);
+  font-size:.78rem;
+  line-height:1.45;
+}
+
+@media (max-width: 760px){
+  .intakelifecycle{
+    align-items:stretch;
+    flex-direction:column;
+  }
+}

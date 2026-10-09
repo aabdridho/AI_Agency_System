@@ -4,6 +4,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from pydantic import BaseModel
 
@@ -37,6 +38,14 @@ class UsageRecord(BaseModel):
     task_id: str
     owner: str
     phase: str
+
+    # Unique identity for one recorded provider usage row.
+    # Optional keeps legacy usage.jsonl readable.
+    usage_id: str | None = None
+
+    run_id: str | None = None
+    attempt: int = 1
+
     metrics: UsageMetrics
 
 
@@ -155,6 +164,8 @@ class UsageLedger:
         owner: str,
         phase: str,
         metrics: UsageMetrics,
+        run_id: str | None = None,
+        attempt: int = 1,
     ) -> Path:
         directory = self.root / project_name
         directory.mkdir(parents=True, exist_ok=True)
@@ -167,6 +178,9 @@ class UsageLedger:
             task_id=task_id,
             owner=owner,
             phase=phase,
+            usage_id=uuid4().hex,
+            run_id=run_id,
+            attempt=attempt,
             metrics=metrics,
         )
 

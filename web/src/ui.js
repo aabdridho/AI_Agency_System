@@ -5,6 +5,7 @@ import { MODELS, EFFORTS, ROLES, DEFAULT_TIERS, unitCost } from './config.js';
 const clone = (o) => JSON.parse(JSON.stringify(o));
 
 export const store = {
+  routingMode: 'auto',
   tiers: clone(DEFAULT_TIERS),
   running: false,
   sim: { claude: 0, codex: 0, tasks: 0, esc: 0, saved: 0, reviews: 0, router: 0, naive: 0 },
@@ -22,13 +23,47 @@ export const resetTiers = () => { store.tiers = clone(DEFAULT_TIERS); };
 export function setBusy(b) {
   store.running = b;
   document.querySelectorAll('[data-lock]').forEach((x) => { x.disabled = b; });
-  document.querySelectorAll('#cfg select').forEach((x) => { x.disabled = b; });
+  document.querySelectorAll('#cfg select').forEach((x) => {
+    if (x.dataset.routingMode !== undefined) {
+      x.disabled = b;
+      return;
+    }
+
+    x.disabled = b || store.routingMode === 'auto';
+  });
 }
 
 // ---------- tier config panel ----------
 export function renderCfg(onChange) {
   const box = $('cfg');
   box.innerHTML = '';
+
+  const modeBox = document.createElement('div');
+  modeBox.className = 'role';
+  modeBox.innerHTML = `
+    <h3>Routing Mode</h3>
+    <select
+      id="routingMode"
+      data-routing-mode
+      aria-label="Routing mode"
+    >
+      <option value="auto">AUTO · GOAT adaptive</option>
+      <option value="manual">MANUAL · tier override</option>
+    </select>
+    <div class="hint">
+      ${
+        store.routingMode === 'auto'
+          ? 'GOAT memilih provider, model, dan effort berdasarkan domain + risk. Tier di bawah hanya preset/reference.'
+          : 'Pilihan model dan effort per tier menjadi authoritative untuk runtime routing.'
+      }
+    </div>
+  `;
+
+  modeBox.querySelector('[data-routing-mode]').value =
+    store.routingMode;
+
+  box.appendChild(modeBox);
+
   const group = (vendor) => Object.entries(MODELS).filter(([, m]) => m.vendor === vendor)
     .map(([id, m]) => `<option value="${id}">${m.name}</option>`).join('');
   ROLES.forEach((r) => {
@@ -53,10 +88,35 @@ export function renderCfg(onChange) {
     if (es) es.value = t.effort;
     box.appendChild(el);
   });
-  box.querySelectorAll('select').forEach((x) => { x.disabled = store.running; });
+  box.querySelectorAll('select').forEach((x) => {
+    if (x.dataset.routingMode !== undefined) {
+      x.disabled = store.running;
+      return;
+    }
+
+    x.disabled =
+      store.running
+      || store.routingMode === 'auto';
+  });
   box.onchange = (e) => {
     const s = e.target;
-    if (!s.dataset.r || store.running) return;
+
+    if (store.running) return;
+
+    if (s.dataset.routingMode !== undefined) {
+      store.routingMode = s.value === 'manual'
+        ? 'manual'
+        : 'auto';
+
+      renderCfg(onChange);
+      onChange?.();
+      return;
+    }
+
+    if (!s.dataset.r) return;
+
+    if (store.routingMode === 'auto') return;
+
     store.tiers[s.dataset.r][s.dataset.f] = s.value;
     renderCfg(onChange);
     onChange?.();

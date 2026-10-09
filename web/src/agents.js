@@ -139,27 +139,43 @@ function applyAgent(agent) {
 export function renderAgentRuntime(
   agents,
   selectedProject,
+  renderHistorical,
 ) {
   /*
-   * Rebuild the Live map from its default state on every
-   * polling cycle, then apply only real runtime state.
+   * Arbitration:
    *
-   * This deliberately does NOT invent activity.
-   * A node becomes active only when /api/agents says so.
+   * Active runtime agent wins while real work is in
+   * progress. Otherwise restore the latest persisted
+   * execution-event snapshot for the selected project.
    */
+
+  const relevant = agents.filter(
+    (agent) =>
+      AGENT_META[agent.id]
+      && belongsToProject(
+        agent,
+        selectedProject,
+      ),
+  );
+
+  const active = relevant.filter(
+    (agent) =>
+      agent.status === 'running'
+      || agent.status === 'waiting',
+  );
+
+  if (!active.length) {
+    if (renderHistorical?.()) {
+      return;
+    }
+
+    resetMap();
+    return;
+  }
 
   resetMap();
 
-  agents
-    .filter(
-      (agent) =>
-        AGENT_META[agent.id]
-        && belongsToProject(
-          agent,
-          selectedProject,
-        ),
-    )
-    .forEach(applyAgent);
+  active.forEach(applyAgent);
 }
 
 
@@ -182,6 +198,7 @@ async function poll(context) {
     renderAgentRuntime(
       agents,
       context.selectedProject(),
+      context.renderHistorical,
     );
   } catch {
     /*

@@ -1,4 +1,18 @@
-﻿# Changelog
+# Changelog
+
+## V0.16.0
+
+- Added local Control Room project intake and discovery confirmation flow.
+- Added GOAT AUTO/MANUAL routing with domain-aware provider/model ownership.
+- Added real execution event telemetry for task, triage, primary, fallback, QA, integration, and report phases.
+- Added per-task token usage observability.
+- Added execution `run_id`, event `event_id`, ordered event `sequence`, and immutable per-run execution reports.
+- Added latest-run filtering for Control Room execution events and usage telemetry.
+- Added unique `usage_id` values while preserving compatibility with legacy usage records.
+- Preserved cumulative project economics/billing while latest-run observability stays isolated.
+- Hardened discovery extraction for audience, payment, authentication, database, layout/style, and contextual requirements.
+- Full regression verified at 267 passing tests before release packaging.
+
 
 ## V0.14 - Project Orchestrator
 

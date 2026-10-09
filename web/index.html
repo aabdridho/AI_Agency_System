@@ -25,6 +25,99 @@
     </div>
   </header>
 
+  <section class="cfgwrap intakewrap" data-show="live" hidden aria-label="Project intake">
+    <div class="cfghead">
+      <h2>Project Intake</h2>
+      <p>
+        Masukkan brief project asli. Tahap ini hanya menjalankan discovery;
+        belum menjalankan Claude, Codex, routing, atau deployment.
+        <span id="intakeState" class="t-dim"></span>
+      </p>
+    </div>
+
+    <form id="intakeForm" class="intakeform">
+      <div class="intakefields">
+        <label>
+          <span>Project name</span>
+          <input
+            id="intakeProject"
+            autocomplete="off"
+            maxlength="100"
+            placeholder="contoh: website-pt-abc"
+            required
+            data-lock
+          >
+        </label>
+
+        <label class="intakebrief">
+          <span>Client brief</span>
+          <textarea
+            id="intakeBrief"
+            rows="5"
+            placeholder="Jelaskan apa yang ingin dibuat..."
+            required
+            data-lock
+          ></textarea>
+        </label>
+
+        <label class="intakerefs">
+          <span>Reference URL — opsional, satu per baris</span>
+          <textarea
+            id="intakeReferences"
+            rows="3"
+            placeholder="https://contoh.com"
+            data-lock
+          ></textarea>
+        </label>
+      </div>
+
+      <div class="intakeactions">
+        <button
+          class="go primary"
+          id="intakeSubmit"
+          type="submit"
+          data-lock
+        >
+          Analisis Brief
+        </button>
+      </div>
+    </form>
+
+    <div id="intakeResult" class="intakeresult" hidden>
+      <p id="intakeSummary" class="mono-sm"></p>
+      <div id="intakeQuestionWrap" hidden>
+        <h3>Butuh konfirmasi</h3>
+        <div id="intakeQuestions" class="intakequestions"></div>
+
+        <div class="intakeconfirmactions">
+          <button
+            class="go primary"
+            id="intakeConfirm"
+            type="button"
+            data-lock
+          >
+            Simpan Jawaban
+          </button>
+        </div>
+      </div>
+
+      <div id="intakeApprovalWrap" class="intakeapproval" hidden>
+        <p class="mono-sm">
+          Discovery lengkap dan siap dibuat menjadi requirement project.
+        </p>
+
+        <button
+          class="go primary"
+          id="intakeApprove"
+          type="button"
+          data-lock
+        >
+          Approve Requirement
+        </button>
+      </div>
+    </div>
+  </section>
+
   <div class="stages" id="stages" aria-label="Tahap agensi"></div>
 
   <div class="map"><div class="flash" id="flash"></div><div class="mapscroll">

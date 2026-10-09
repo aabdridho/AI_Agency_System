@@ -25,11 +25,57 @@ export async function ping() {
 }
 
 export const listAgents = () => req('/api/agents');
+
+export const analyzeProjectIntake = (projectName, brief, references = []) =>
+  req('/api/projects/intake', {
+    method: 'POST',
+    body: JSON.stringify({
+      project_name: projectName,
+      brief,
+      references,
+    }),
+  });
+
+export const confirmProjectIntake = (
+  projectName,
+  result,
+  answers,
+) =>
+  req('/api/projects/intake/confirm', {
+    method: 'POST',
+    body: JSON.stringify({
+      project_name: projectName,
+      result,
+      answers,
+    }),
+  });
+
+export const approveProjectIntake = (
+  projectName,
+  result,
+) =>
+  req('/api/projects/intake/approve', {
+    method: 'POST',
+    body: JSON.stringify({
+      project_name: projectName,
+      result,
+    }),
+  });
+
 export const listProjects = () => req('/api/projects');
 export const getProject = (name) => req(`/api/projects/${encodeURIComponent(name)}`);
+export const executeProject = (name) =>
+  req(`/api/projects/${encodeURIComponent(name)}/execute`, {
+    method: 'POST',
+  });
+
 export const saveRouting = (name) => req(`/api/projects/${encodeURIComponent(name)}/route`, { method: 'POST' });
 export const getConfig = () => req('/api/config');
-export const putConfig = (tiers) => req('/api/config', { method: 'PUT', body: JSON.stringify({ tiers }) });
+export const putConfig = (config) =>
+  req('/api/config', {
+    method: 'PUT',
+    body: JSON.stringify(config),
+  });
 
 export const getEconomics = (name) =>
   req(`/api/projects/${encodeURIComponent(name)}/economics`);

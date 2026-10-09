@@ -34,6 +34,9 @@ class ProjectDetail(ProjectSummary):
     routing_source: Literal["saved", "preview"] | None = None
     routing: dict[str, Any] | None = None
     execution: dict[str, Any] | None = None
+    execution_run_id: str | None = None
+    execution_events: list[dict[str, Any]] | None = None
+    usage_records: list[dict[str, Any]] | None = None
     delivery: dict[str, Any] | None = None
     deployment_plan: dict[str, Any] | None = None
     deployment_result: dict[str, Any] | None = None
@@ -45,6 +48,7 @@ class ProjectDetail(ProjectSummary):
 TIER_ROLES = ("triage", "quick", "build", "deep", "create", "review", "esc")
 KNOWN_MODELS = ("rules", "haiku", "sonnet", "opus", "fable", "luna", "sol", "astra")
 Effort = Literal["low", "medium", "high", "xhigh"]
+RoutingMode = Literal["auto", "manual"]
 
 
 class Tier(BaseModel):
@@ -60,6 +64,7 @@ class Tier(BaseModel):
 
 
 class TierConfig(BaseModel):
+    mode: RoutingMode = "auto"
     tiers: dict[str, Tier] = Field(default_factory=dict)
 
     @field_validator("tiers")

@@ -5,6 +5,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from app.dashboard import DashboardService, ProjectNotFound
+from app.dashboard.service import valid_name
+from app.orchestration.orchestrator import ProjectOrchestrator
 from app.dashboard.models import ProjectDetail, ProjectSummary, TierConfig
 from app.discovery.confirmation import ConfirmationGate
 from app.discovery.engine import RequirementDiscoveryEngine
@@ -13,7 +15,7 @@ from app.workspace import OUTPUT_ROOT, SYSTEM_ROOT
 from app.agents.router import router as agents_router
 from app.execution.billing import BillingPolicy
 
-app = FastAPI(title="AI Agency System API", version="0.15.0")
+app = FastAPI(title="AI Agency System API", version="0.16.0")
 app.include_router(agents_router)
 engine = RequirementDiscoveryEngine()
 gate = ConfirmationGate()
@@ -32,9 +34,40 @@ class ConfirmationRequest(BaseModel):
     value: str | bool | int | float | list[str]
 
 
+class ProjectIntakeRequest(BaseModel):
+    project_name: str = Field(min_length=1, max_length=100)
+    brief: str = Field(min_length=1)
+    references: list[str] = []
+
+
+class ProjectIntakeResponse(BaseModel):
+    project_name: str
+    discovery: DiscoveryResult
+
+
+class ProjectConfirmationRequest(BaseModel):
+    project_name: str = Field(min_length=1, max_length=100)
+    result: DiscoveryResult
+    answers: dict[
+        str,
+        str | bool | int | float | list[str],
+    ]
+
+
+class ProjectApprovalRequest(BaseModel):
+    project_name: str = Field(min_length=1, max_length=100)
+    result: DiscoveryResult
+
+
+class ProjectApprovalResponse(BaseModel):
+    project_name: str
+    discovery: DiscoveryResult
+    generated_docs: list[str]
+
+
 @app.get("/health")
 def health():
-    return {"status": "ok", "version": "0.15.0"}
+    return {"status": "ok", "version": "0.16.0"}
 
 
 @app.post("/discover", response_model=DiscoveryResult)
@@ -54,6 +87,151 @@ def confirm(payload: ConfirmationRequest):
 
 def get_dashboard() -> DashboardService:
     return DashboardService(runtime_root=SYSTEM_ROOT / "runtime_data", output_root=OUTPUT_ROOT)
+
+
+def get_orchestrator() -> ProjectOrchestrator:
+    return ProjectOrchestrator(
+        runtime_root=SYSTEM_ROOT / "runtime_data",
+        output_root=OUTPUT_ROOT,
+    )
+
+
+@app.post(
+    "/api/projects/intake",
+    response_model=ProjectIntakeResponse,
+)
+def project_intake(
+    payload: ProjectIntakeRequest,
+    orchestrator: ProjectOrchestrator = Depends(get_orchestrator),
+):
+    project_name = payload.project_name.strip()
+
+    if not valid_name(project_name):
+        raise HTTPException(
+            422,
+            (
+                "Nama project tidak valid. Gunakan huruf, angka, "
+                "titik, underscore, atau dash; jangan gunakan '..'."
+            ),
+        )
+
+    try:
+        result = orchestrator.analyze_brief(
+            payload.brief,
+            payload.references,
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+
+    return ProjectIntakeResponse(
+        project_name=project_name,
+        discovery=result,
+    )
+
+
+@app.post(
+    "/api/projects/intake/confirm",
+    response_model=ProjectIntakeResponse,
+)
+def confirm_project_intake(
+    payload: ProjectConfirmationRequest,
+):
+    project_name = payload.project_name.strip()
+
+    if not valid_name(project_name):
+        raise HTTPException(
+            422,
+            "Nama project tidak valid.",
+        )
+
+    result = payload.result
+
+    for key, value in payload.answers.items():
+        result = gate.promote_confirmed(
+            result,
+            key,
+            value,
+        )
+
+    return ProjectIntakeResponse(
+        project_name=project_name,
+        discovery=result,
+    )
+
+
+@app.post(
+    "/api/projects/intake/approve",
+    response_model=ProjectApprovalResponse,
+)
+def approve_project_intake(
+    payload: ProjectApprovalRequest,
+    orchestrator: ProjectOrchestrator = Depends(get_orchestrator),
+):
+    project_name = payload.project_name.strip()
+
+    if not valid_name(project_name):
+        raise HTTPException(
+            422,
+            "Nama project tidak valid.",
+        )
+
+    try:
+        approved = orchestrator.approve_discovery(
+            payload.result,
+        )
+
+        generated = orchestrator.generate_documentation(
+            project_name,
+            approved,
+        )
+
+        # Documentation selesai. Lanjutkan semua safe automatic
+        # stage sampai membutuhkan approval real execution.
+        orchestrator.run_until_blocked(
+            project_name,
+            approve_real_execution=False,
+        )
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(409, str(exc))
+    except FileExistsError as exc:
+        raise HTTPException(409, str(exc))
+
+    return ProjectApprovalResponse(
+        project_name=project_name,
+        discovery=approved,
+        generated_docs=[
+            str(path.name)
+            for path in generated
+        ],
+    )
+
+
+@app.post("/api/projects/{name}/execute")
+def execute_project_from_control_room(
+    name: str,
+    orchestrator: ProjectOrchestrator = Depends(get_orchestrator),
+):
+    if not valid_name(name):
+        raise HTTPException(
+            422,
+            "Nama project tidak valid.",
+        )
+
+    try:
+        return orchestrator.run_until_blocked(
+            name,
+            approve_real_execution=True,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            404,
+            str(exc),
+        )
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(
+            409,
+            str(exc),
+        )
 
 
 @app.get("/api/projects", response_model=list[ProjectSummary])

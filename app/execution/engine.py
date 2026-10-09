@@ -14,6 +14,7 @@ from app.execution.models import ExecutionRecord, ExecutionReport
 from app.execution.prompt_builder import TaskPromptBuilder
 from app.execution.qa import DeterministicQA
 from app.execution.usage import UsageLedger, parse_usage
+from app.execution.events import ExecutionEventLedger
 from app.routing.models import RoutingPlan
 
 
@@ -28,6 +29,8 @@ class ExecutionEngine:
         self,
         agent_registry: AgentRegistry | None = None,
         usage_ledger: UsageLedger | None = None,
+        event_ledger: ExecutionEventLedger | None = None,
+        run_id: str | None = None,
     ):
         self.prompt_builder = TaskPromptBuilder()
         self.adapters = {
@@ -42,6 +45,8 @@ class ExecutionEngine:
             else default_agent_registry
         )
         self.usage_ledger = usage_ledger
+        self.event_ledger = event_ledger
+        self.run_id = run_id
 
     def _run_adapter(
         self,
@@ -74,6 +79,43 @@ class ExecutionEngine:
             **kwargs,
         )
 
+    def _event(
+        self,
+        *,
+        project_name: str,
+        event_type: str,
+        phase: str,
+        status: str = "info",
+        task_id: str | None = None,
+        owner: str | None = None,
+        model: str | None = None,
+        effort: str | None = None,
+        attempt: int = 1,
+        detail: str | None = None,
+        metadata: dict | None = None,
+    ) -> None:
+        if self.event_ledger is None:
+            return
+
+        try:
+            self.event_ledger.append(
+                project_name=project_name,
+                task_id=task_id,
+                run_id=self.run_id,
+                event_type=event_type,
+                phase=phase,
+                status=status,
+                owner=owner,
+                model=model,
+                effort=effort,
+                attempt=attempt,
+                detail=detail,
+                metadata=metadata,
+            )
+        except Exception:
+            # Observability must never break execution.
+            return
+
     def _record_usage(
         self,
         *,
@@ -85,6 +127,7 @@ class ExecutionEngine:
         requested_model: str | None = None,
         requested_effort: str | None = None,
         goat_tier: str | None = None,
+        attempt: int = 1,
     ) -> None:
         if self.usage_ledger is None:
             return
@@ -122,6 +165,8 @@ class ExecutionEngine:
                 owner=owner,
                 phase=phase,
                 metrics=metrics,
+                run_id=self.run_id,
+                attempt=attempt,
             )
         except Exception:
             # Observability must never break execution.
@@ -432,6 +477,7 @@ class ExecutionEngine:
                 phase=f"qa-repair-{attempt}",
                 requested_model=repair_model,
                 requested_effort=repair_effort,
+                attempt=attempt,
             )
 
             last_proc = proc
@@ -569,6 +615,57 @@ class ExecutionEngine:
             task_branch = git.sanitize_branch(decision.task_id, decision.task_text)
             prompt = self.prompt_builder.build(root, decision.task_text)
 
+            self._event(
+                project_name=plan.project_name,
+                task_id=decision.task_id,
+                event_type="task.created",
+                phase="task",
+                status="info",
+                detail=decision.task_text,
+            )
+
+            self._event(
+                project_name=plan.project_name,
+                task_id=decision.task_id,
+                event_type="triage.completed",
+                phase="triage",
+                status="success",
+                owner="internal_decision",
+                model=None,
+                effort=None,
+                metadata={
+                    "route": getattr(
+                        decision,
+                        "route",
+                        getattr(
+                            decision,
+                            "goat_tier",
+                            "build",
+                        ),
+                    ),
+                    "risk": getattr(
+                        decision,
+                        "risk",
+                        "medium",
+                    ),
+                    "checks": getattr(
+                        decision,
+                        "checks",
+                        [],
+                    ),
+                    "triage_mode": getattr(
+                        decision,
+                        "triage_mode",
+                        "rules",
+                    ),
+                    "category": getattr(
+                        decision,
+                        "category",
+                        "general_engineering",
+                    ),
+                },
+            )
+
             if not dry_run:
                 print("\n" + "=" * 72)
                 print(f"[{index}/{total}] {decision.task_id} - {decision.task_text}")
@@ -618,6 +715,22 @@ class ExecutionEngine:
                     project_name=plan.project_name,
                     task_id=decision.task_id,
                     phase="qa",
+                )
+
+                self._event(
+                    project_name=plan.project_name,
+                    task_id=decision.task_id,
+                    event_type="verify.started",
+                    phase="verify",
+                    status="running",
+                    owner="deterministic_qa",
+                    metadata={
+                        "checks": getattr(
+                            decision,
+                            "checks",
+                            [],
+                        ),
+                    },
                 )
 
                 try:
@@ -764,6 +877,16 @@ class ExecutionEngine:
                         "deterministic_qa",
                     )
 
+                self._event(
+                    project_name=plan.project_name,
+                    task_id=decision.task_id,
+                    event_type="verify.completed",
+                    phase="verify",
+                    status="failed" if failed else "success",
+                    owner="deterministic_qa",
+                    detail=qa_profile,
+                )
+
                 records.append(
                     ExecutionRecord(
                         task_id=decision.task_id,
@@ -820,6 +943,25 @@ class ExecutionEngine:
             base_sha = git.head_sha()
 
             print(f"-> Starting {decision.primary_owner}...")
+
+            self._event(
+                project_name=plan.project_name,
+                task_id=decision.task_id,
+                event_type="primary.started",
+                phase="primary",
+                status="running",
+                owner=decision.primary_owner,
+                model=getattr(
+                    decision,
+                    "primary_model",
+                    None,
+                ),
+                effort=getattr(
+                    decision,
+                    "primary_effort",
+                    None,
+                ),
+            )
 
             self._agent_start(
                 decision.primary_owner,
@@ -884,6 +1026,33 @@ class ExecutionEngine:
             primary_changed = proc.returncode == 0 and git.has_changes()
             primary_failed = proc.returncode != 0 or not primary_changed
 
+            self._event(
+                project_name=plan.project_name,
+                task_id=decision.task_id,
+                event_type="primary.completed",
+                phase="primary",
+                status=(
+                    "failed"
+                    if primary_failed
+                    else "success"
+                ),
+                owner=decision.primary_owner,
+                model=getattr(
+                    decision,
+                    "primary_model",
+                    None,
+                ),
+                effort=getattr(
+                    decision,
+                    "primary_effort",
+                    None,
+                ),
+                metadata={
+                    "return_code": proc.returncode,
+                    "repository_changed": primary_changed,
+                },
+            )
+
             if primary_failed:
                 fallback = (
                     decision.fallback_owner
@@ -912,6 +1081,26 @@ class ExecutionEngine:
                     git.create_or_reset_branch_from(
                         task_branch,
                         integration_branch,
+                    )
+
+                    self._event(
+                        project_name=plan.project_name,
+                        task_id=decision.task_id,
+                        event_type="fallback.started",
+                        phase="fallback",
+                        status="running",
+                        owner=fallback,
+                        model=getattr(
+                            decision,
+                            "fallback_model",
+                            None,
+                        ),
+                        effort=getattr(
+                            decision,
+                            "fallback_effort",
+                            None,
+                        ),
+                        attempt=1,
                     )
 
                     self._agent_start(
@@ -966,6 +1155,39 @@ class ExecutionEngine:
                         requested_model=getattr(decision, "fallback_model", None),
                         requested_effort=getattr(decision, "fallback_effort", None),
                         goat_tier="esc",
+                    )
+
+                    fallback_changed = (
+                        final_proc.returncode == 0
+                        and git.has_changes()
+                    )
+
+                    self._event(
+                        project_name=plan.project_name,
+                        task_id=decision.task_id,
+                        event_type="fallback.completed",
+                        phase="fallback",
+                        status=(
+                            "success"
+                            if fallback_changed
+                            else "failed"
+                        ),
+                        owner=fallback,
+                        model=getattr(
+                            decision,
+                            "fallback_model",
+                            None,
+                        ),
+                        effort=getattr(
+                            decision,
+                            "fallback_effort",
+                            None,
+                        ),
+                        attempt=1,
+                        metadata={
+                            "return_code": final_proc.returncode,
+                            "repository_changed": fallback_changed,
+                        },
                     )
 
                     escalated = True
@@ -1077,6 +1299,20 @@ class ExecutionEngine:
 
                 print(f"[OK] {decision.task_id} committed and merged into {integration_branch}")
 
+                self._event(
+                    project_name=plan.project_name,
+                    task_id=decision.task_id,
+                    event_type="integration.completed",
+                    phase="integration",
+                    status="success",
+                    owner="internal_decision",
+                    metadata={
+                        "branch": integration_branch,
+                        "task_commit_sha": task_commit_sha,
+                        "integration_sha": integration_sha,
+                    },
+                )
+
                 self._agent_idle(
                     command_owner,
                 )
@@ -1143,8 +1379,28 @@ class ExecutionEngine:
 
         git.create_or_switch_integration(integration_branch) if not dry_run else None
 
+        self._event(
+            project_name=plan.project_name,
+            task_id=None,
+            event_type="report.completed",
+            phase="report",
+            status=(
+                "failed"
+                if any(
+                    r.status == "failed"
+                    for r in records
+                )
+                else "success"
+            ),
+            owner="internal_decision",
+            metadata={
+                "record_count": len(records),
+            },
+        )
+
         return ExecutionReport(
             project_name=plan.project_name,
             dry_run=dry_run,
             records=records,
+            run_id=self.run_id,
         )
