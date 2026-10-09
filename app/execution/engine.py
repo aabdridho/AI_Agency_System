@@ -30,6 +30,7 @@ class ExecutionEngine:
         agent_registry: AgentRegistry | None = None,
         usage_ledger: UsageLedger | None = None,
         event_ledger: ExecutionEventLedger | None = None,
+        run_id: str | None = None,
     ):
         self.prompt_builder = TaskPromptBuilder()
         self.adapters = {
@@ -45,6 +46,7 @@ class ExecutionEngine:
         )
         self.usage_ledger = usage_ledger
         self.event_ledger = event_ledger
+        self.run_id = run_id
 
     def _run_adapter(
         self,
@@ -99,6 +101,7 @@ class ExecutionEngine:
             self.event_ledger.append(
                 project_name=project_name,
                 task_id=task_id,
+                run_id=self.run_id,
                 event_type=event_type,
                 phase=phase,
                 status=status,
@@ -124,6 +127,7 @@ class ExecutionEngine:
         requested_model: str | None = None,
         requested_effort: str | None = None,
         goat_tier: str | None = None,
+        attempt: int = 1,
     ) -> None:
         if self.usage_ledger is None:
             return
@@ -161,6 +165,8 @@ class ExecutionEngine:
                 owner=owner,
                 phase=phase,
                 metrics=metrics,
+                run_id=self.run_id,
+                attempt=attempt,
             )
         except Exception:
             # Observability must never break execution.
@@ -471,6 +477,7 @@ class ExecutionEngine:
                 phase=f"qa-repair-{attempt}",
                 requested_model=repair_model,
                 requested_effort=repair_effort,
+                attempt=attempt,
             )
 
             last_proc = proc
@@ -1395,4 +1402,5 @@ class ExecutionEngine:
             project_name=plan.project_name,
             dry_run=dry_run,
             records=records,
+            run_id=self.run_id,
         )

@@ -4,6 +4,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
+from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
@@ -22,6 +23,12 @@ class ExecutionEvent(BaseModel):
     timestamp: datetime
     project_name: str
     task_id: str | None = None
+
+    # Execution identity. Optional for backward compatibility
+    # with V0.16 event rows created before run hardening.
+    run_id: str | None = None
+    event_id: str | None = None
+    sequence: int | None = None
 
     event_type: str
     phase: str
@@ -53,6 +60,10 @@ class ExecutionEventLedger:
         root: str | Path,
     ):
         self.root = Path(root)
+        self._sequence_by_run: dict[
+            tuple[str, str],
+            int,
+        ] = {}
 
     def _path(
         self,
@@ -64,6 +75,49 @@ class ExecutionEventLedger:
             / "events.jsonl"
         )
 
+    def _next_sequence(
+        self,
+        project_name: str,
+        run_id: str,
+    ) -> int:
+        key = (project_name, run_id)
+
+        if key not in self._sequence_by_run:
+            highest = 0
+            path = self._path(project_name)
+
+            if path.is_file():
+                for raw in path.read_text(
+                    encoding="utf-8"
+                ).splitlines():
+                    raw = raw.strip()
+
+                    if not raw:
+                        continue
+
+                    try:
+                        payload = json.loads(raw)
+                    except json.JSONDecodeError:
+                        continue
+
+                    if payload.get("run_id") != run_id:
+                        continue
+
+                    sequence = payload.get("sequence")
+
+                    if isinstance(sequence, int):
+                        highest = max(
+                            highest,
+                            sequence,
+                        )
+
+            self._sequence_by_run[key] = highest
+
+        self._sequence_by_run[key] += 1
+
+        return self._sequence_by_run[key]
+
+
     def append(
         self,
         *,
@@ -72,6 +126,7 @@ class ExecutionEventLedger:
         phase: str,
         status: EventStatus = "info",
         task_id: str | None = None,
+        run_id: str | None = None,
         owner: str | None = None,
         model: str | None = None,
         effort: str | None = None,
@@ -85,10 +140,22 @@ class ExecutionEventLedger:
             exist_ok=True,
         )
 
+        sequence = (
+            self._next_sequence(
+                project_name,
+                run_id,
+            )
+            if run_id
+            else None
+        )
+
         event = ExecutionEvent(
             timestamp=datetime.now(timezone.utc),
             project_name=project_name,
             task_id=task_id,
+            run_id=run_id,
+            event_id=uuid4().hex,
+            sequence=sequence,
             event_type=event_type,
             phase=phase,
             status=status,

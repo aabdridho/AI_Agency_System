@@ -35,4 +35,8 @@ class ExecutionReport(BaseModel):
     project_name: str
     dry_run: bool
     records: list[ExecutionRecord]
+
+    # Latest execution identity. None keeps legacy reports valid.
+    run_id: str | None = None
+
     policy_version: str = "0.6"

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import shutil
 from pathlib import Path
+from uuid import uuid4
 from typing import Any
 
 from app.delivery.checker import DeliveryChecker
@@ -678,6 +679,8 @@ class ProjectOrchestrator:
                 + ", ".join(missing)
             )
 
+        run_id = uuid4().hex
+
         usage_ledger = UsageLedger(
             self.runtime_root
             / "usage"
@@ -691,6 +694,7 @@ class ProjectOrchestrator:
         report = ExecutionEngine(
             usage_ledger=usage_ledger,
             event_ledger=event_ledger,
+            run_id=run_id,
         ).execute(
             plan,
             root,

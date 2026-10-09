@@ -37,6 +37,11 @@ class UsageRecord(BaseModel):
     task_id: str
     owner: str
     phase: str
+
+    # Optional keeps pre-hardening usage.jsonl readable.
+    run_id: str | None = None
+    attempt: int = 1
+
     metrics: UsageMetrics
 
 
@@ -155,6 +160,8 @@ class UsageLedger:
         owner: str,
         phase: str,
         metrics: UsageMetrics,
+        run_id: str | None = None,
+        attempt: int = 1,
     ) -> Path:
         directory = self.root / project_name
         directory.mkdir(parents=True, exist_ok=True)
@@ -167,6 +174,8 @@ class UsageLedger:
             task_id=task_id,
             owner=owner,
             phase=phase,
+            run_id=run_id,
+            attempt=attempt,
             metrics=metrics,
         )
 
