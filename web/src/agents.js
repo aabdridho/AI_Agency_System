@@ -5,7 +5,7 @@ import {
   setNodeLabel,
 } from './map.js';
 import { store } from './ui.js';
-import { belongsToExecution } from './agent_scope.js';
+import { selectRuntimeAgents } from './agent_scope.js';
 
 
 const POLL_MS = 650;
@@ -138,20 +138,12 @@ export function renderAgentRuntime(
    * execution-event snapshot for the selected project.
    */
 
-  const relevant = agents.filter(
-    (agent) =>
-      AGENT_META[agent.id]
-      && belongsToExecution(
-        agent,
-        selectedProject,
-        selectedRunId,
-      ),
-  );
-
-  const active = relevant.filter(
-    (agent) =>
-      agent.status === 'running'
-      || agent.status === 'waiting',
+  const active = selectRuntimeAgents(
+    agents.filter(
+      (agent) => AGENT_META[agent.id],
+    ),
+    selectedProject,
+    selectedRunId,
   );
 
   if (!active.length) {

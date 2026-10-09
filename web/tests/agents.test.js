@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   belongsToExecution,
+  selectRuntimeAgents,
 } from '../src/agent_scope.js';
 
 
@@ -112,3 +113,118 @@ test(
     );
   },
 );
+
+test(
+  'running agent wins over waiting agent in same execution',
+  () => {
+    const selected = selectRuntimeAgents(
+      [
+        {
+          id: 'deterministic-qa',
+          project: 'demo',
+          run_id: 'run-a',
+          status: 'waiting',
+        },
+        {
+          id: 'codex',
+          project: 'demo',
+          run_id: 'run-a',
+          status: 'running',
+        },
+      ],
+      'demo',
+      'run-a',
+    );
+
+    assert.equal(selected.length, 1);
+    assert.equal(selected[0].id, 'codex');
+    assert.equal(selected[0].status, 'running');
+  },
+);
+
+
+test(
+  'waiting agent represents execution when nothing is running',
+  () => {
+    const selected = selectRuntimeAgents(
+      [
+        {
+          id: 'deterministic-qa',
+          project: 'demo',
+          run_id: 'run-a',
+          status: 'waiting',
+        },
+      ],
+      'demo',
+      'run-a',
+    );
+
+    assert.equal(selected.length, 1);
+    assert.equal(selected[0].status, 'waiting');
+  },
+);
+
+
+test(
+  'error offline and idle agents do not override history',
+  () => {
+    const selected = selectRuntimeAgents(
+      [
+        {
+          id: 'codex',
+          project: 'demo',
+          run_id: 'run-a',
+          status: 'error',
+        },
+        {
+          id: 'claude-code',
+          project: 'demo',
+          run_id: 'run-a',
+          status: 'offline',
+        },
+        {
+          id: 'deterministic-qa',
+          project: 'demo',
+          run_id: 'run-a',
+          status: 'idle',
+        },
+      ],
+      'demo',
+      'run-a',
+    );
+
+    assert.deepEqual(selected, []);
+  },
+);
+
+
+test(
+  'running agent from stale run cannot beat current waiting agent',
+  () => {
+    const selected = selectRuntimeAgents(
+      [
+        {
+          id: 'codex',
+          project: 'demo',
+          run_id: 'run-old',
+          status: 'running',
+        },
+        {
+          id: 'deterministic-qa',
+          project: 'demo',
+          run_id: 'run-new',
+          status: 'waiting',
+        },
+      ],
+      'demo',
+      'run-new',
+    );
+
+    assert.equal(selected.length, 1);
+    assert.equal(
+      selected[0].id,
+      'deterministic-qa',
+    );
+  },
+);
+
