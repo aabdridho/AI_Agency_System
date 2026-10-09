@@ -1,5 +1,40 @@
 # Changelog
 
+## V0.17.0
+
+### Agent runtime correlation
+
+- Added execution `run_id` correlation to persistent agent runtime state.
+- Added run-scoped agent sessions.
+- Prevented unscoped or stale-run agents from appearing active for the
+  currently selected execution.
+- Prioritized RUNNING agents over WAITING agents in runtime arbitration.
+- Cleared stale execution context when OFFLINE agents recover.
+
+### Execution lifecycle
+
+- Added `run.started`, `run.completed`, and `run.failed` lifecycle events.
+- Preserved lifecycle visibility for runtime errors and `KeyboardInterrupt`.
+- Updated dashboard run selection to use the latest observed lifecycle run.
+- Prevented stale execution reports from being presented as the current run.
+
+### Runtime hardening
+
+- Added bounded heartbeat leases while provider adapters are executing.
+- Added stale RUNNING agent detection and OFFLINE transition.
+- Fixed streaming provider execution so timeout applies while stdout is open
+  or silent.
+- Added cleanup on timeout and interruption.
+- Added Windows process-group and descendant process-tree cleanup.
+
+### Compatibility
+
+- Preserved legacy execution reports and events without `run_id`.
+- Preserved existing adapter test-double signatures.
+- GOAT routing remains one task to one primary model owner with at most one
+  explicit fallback.
+- Economics and billing remain cumulative across all usage records.
+
 ## V0.16.0
 
 - Added local Control Room project intake and discovery confirmation flow.
