@@ -1,3 +1,4 @@
+import os
 import shutil
 import subprocess
 import threading
@@ -46,15 +47,24 @@ class BaseAdapter:
                 timeout=timeout,
             )
 
+        popen_kwargs = {
+            "cwd": repo,
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.STDOUT,
+            "text": True,
+            "encoding": "utf-8",
+            "errors": "replace",
+            "bufsize": 1,
+        }
+
+        if os.name == "nt":
+            popen_kwargs["creationflags"] = (
+                subprocess.CREATE_NEW_PROCESS_GROUP
+            )
+
         proc = subprocess.Popen(
             cmd,
-            cwd=repo,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            bufsize=1,
+            **popen_kwargs,
         )
 
         output = []
@@ -81,6 +91,35 @@ class BaseAdapter:
             if proc.poll() is not None:
                 return
 
+            if os.name == "nt":
+                try:
+                    subprocess.run(
+                        [
+                            "taskkill",
+                            "/PID",
+                            str(proc.pid),
+                            "/T",
+                            "/F",
+                        ],
+                        capture_output=True,
+                        text=True,
+                        encoding="utf-8",
+                        errors="replace",
+                        timeout=5.0,
+                        check=False,
+                    )
+                except (
+                    OSError,
+                    subprocess.TimeoutExpired,
+                ):
+                    pass
+
+                try:
+                    proc.wait(timeout=2.0)
+                    return
+                except subprocess.TimeoutExpired:
+                    pass
+
             try:
                 proc.terminate()
                 proc.wait(timeout=2.0)
@@ -91,7 +130,7 @@ class BaseAdapter:
                 try:
                     proc.wait(timeout=2.0)
                 except subprocess.TimeoutExpired:
-                    # Do not hide the original timeout/interrupt.
+                    # Never hide the original timeout/interrupt.
                     pass
             except (OSError, ProcessLookupError):
                 pass
