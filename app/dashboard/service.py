@@ -122,6 +122,32 @@ def _latest_execution_run_id(
     )
 
 
+def _latest_observed_execution_run_id(
+    events: list[dict[str, Any]] | None,
+    report_run_id: str | None,
+) -> str | None:
+    lifecycle_events = {
+        "run.started",
+        "run.completed",
+        "run.failed",
+    }
+
+    if events:
+        for row in reversed(events):
+            if row.get("event_type") not in lifecycle_events:
+                continue
+
+            run_id = row.get("run_id")
+
+            if isinstance(run_id, str) and run_id.strip():
+                return run_id
+
+    # V0.16 / legacy compatibility:
+    # before run lifecycle events existed, the persisted report was
+    # the only authoritative source for the selected execution run.
+    return report_run_id
+
+
 def _filter_rows_for_run(
     rows: list[dict[str, Any]] | None,
     run_id: str | None,
@@ -176,20 +202,36 @@ class DashboardService:
             / "execution_report.json"
         )
 
+        all_execution_events = _read_jsonl(
+            rt
+            / "execution"
+            / name
+            / "events.jsonl"
+        )
+
+        report_run_id = _latest_execution_run_id(
+            execution
+        )
+
         execution_run_id = (
-            _latest_execution_run_id(
-                execution
+            _latest_observed_execution_run_id(
+                all_execution_events,
+                report_run_id,
             )
         )
 
+        # A newer run may terminate abnormally before an execution
+        # report can be persisted. Never present the previous run's
+        # report as though it belongs to the latest observed run.
+        if (
+            execution_run_id is not None
+            and report_run_id != execution_run_id
+        ):
+            execution = None
+
         execution_events = (
             _filter_rows_for_run(
-                _read_jsonl(
-                    rt
-                    / "execution"
-                    / name
-                    / "events.jsonl"
-                ),
+                all_execution_events,
                 execution_run_id,
             )
         )
