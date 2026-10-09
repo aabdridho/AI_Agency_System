@@ -4,6 +4,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from pydantic import BaseModel
 
@@ -38,7 +39,10 @@ class UsageRecord(BaseModel):
     owner: str
     phase: str
 
-    # Optional keeps pre-hardening usage.jsonl readable.
+    # Unique identity for one recorded provider usage row.
+    # Optional keeps legacy usage.jsonl readable.
+    usage_id: str | None = None
+
     run_id: str | None = None
     attempt: int = 1
 
@@ -174,6 +178,7 @@ class UsageLedger:
             task_id=task_id,
             owner=owner,
             phase=phase,
+            usage_id=uuid4().hex,
             run_id=run_id,
             attempt=attempt,
             metrics=metrics,
