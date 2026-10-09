@@ -106,6 +106,45 @@ def _read_usage_records(
     ]
 
 
+def _latest_execution_run_id(
+    execution: dict[str, Any] | None,
+) -> str | None:
+    if not execution:
+        return None
+
+    run_id = execution.get("run_id")
+
+    return (
+        run_id
+        if isinstance(run_id, str)
+        and run_id.strip()
+        else None
+    )
+
+
+def _filter_rows_for_run(
+    rows: list[dict[str, Any]] | None,
+    run_id: str | None,
+) -> list[dict[str, Any]] | None:
+    """
+    New execution reports identify the active run.
+
+    Legacy reports have no run_id, so preserve the old
+    behavior and expose every historical row.
+    """
+    if rows is None:
+        return None
+
+    if run_id is None:
+        return rows
+
+    return [
+        row
+        for row in rows
+        if row.get("run_id") == run_id
+    ]
+
+
 class DashboardService:
     def __init__(self, runtime_root: Path, output_root: Path):
         self.runtime_root = Path(runtime_root)
@@ -129,15 +168,50 @@ class DashboardService:
     # ---------- artifacts ----------
     def _artifacts(self, name: str) -> dict[str, Any]:
         rt = self.runtime_root
+
+        execution = _read_json(
+            rt
+            / "execution"
+            / name
+            / "execution_report.json"
+        )
+
+        execution_run_id = (
+            _latest_execution_run_id(
+                execution
+            )
+        )
+
+        execution_events = (
+            _filter_rows_for_run(
+                _read_jsonl(
+                    rt
+                    / "execution"
+                    / name
+                    / "events.jsonl"
+                ),
+                execution_run_id,
+            )
+        )
+
+        usage_records = (
+            _filter_rows_for_run(
+                _read_usage_records(
+                    rt
+                    / "usage"
+                    / name
+                    / "usage.jsonl"
+                ),
+                execution_run_id,
+            )
+        )
+
         return {
             "routing": _read_json(rt / "routing" / name / "routing_plan.json"),
-            "execution": _read_json(rt / "execution" / name / "execution_report.json"),
-            "execution_events": _read_jsonl(
-                rt / "execution" / name / "events.jsonl"
-            ),
-            "usage_records": _read_usage_records(
-                rt / "usage" / name / "usage.jsonl"
-            ),
+            "execution": execution,
+            "execution_run_id": execution_run_id,
+            "execution_events": execution_events,
+            "usage_records": usage_records,
             "delivery": _read_json(rt / "delivery" / name / "delivery_report.json"),
             "deployment_plan": _read_json(rt / "deployment" / name / "deployment_plan.json"),
             "deployment_result": _read_json(rt / "deployment" / name / "deployment_result.json"),

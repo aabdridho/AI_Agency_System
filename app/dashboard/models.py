@@ -34,6 +34,7 @@ class ProjectDetail(ProjectSummary):
     routing_source: Literal["saved", "preview"] | None = None
     routing: dict[str, Any] | None = None
     execution: dict[str, Any] | None = None
+    execution_run_id: str | None = None
     execution_events: list[dict[str, Any]] | None = None
     usage_records: list[dict[str, Any]] | None = None
     delivery: dict[str, Any] | None = None
