@@ -23,6 +23,8 @@ def utc_now_iso() -> str:
 
 
 class AgentRegistry:
+    RUNNING_STALE_AFTER_SECONDS = 20.0
+
     def __init__(
         self,
         state_path: str | Path | None = None,
@@ -124,12 +126,50 @@ class AgentRegistry:
 
         temporary.replace(self.state_path)
 
+    def _refresh_stale_running_agents(self) -> None:
+        now = datetime.now(timezone.utc)
+        changed = False
+
+        for agent in self._agents.values():
+            if agent.status != AgentStatus.RUNNING:
+                continue
+
+            if not agent.heartbeat_at:
+                continue
+
+            try:
+                heartbeat = datetime.fromisoformat(
+                    agent.heartbeat_at
+                )
+            except ValueError:
+                continue
+
+            if heartbeat.tzinfo is None:
+                heartbeat = heartbeat.replace(
+                    tzinfo=timezone.utc
+                )
+
+            age = (
+                now - heartbeat.astimezone(timezone.utc)
+            ).total_seconds()
+
+            if age <= self.RUNNING_STALE_AFTER_SECONDS:
+                continue
+
+            agent.status = AgentStatus.OFFLINE
+            changed = True
+
+        if changed:
+            self._persist()
+
     def list_agents(self) -> list[AgentRecord]:
         self._refresh_from_disk()
+        self._refresh_stale_running_agents()
         return list(self._agents.values())
 
     def get_agent(self, agent_id: str) -> AgentRecord:
         self._refresh_from_disk()
+        self._refresh_stale_running_agents()
 
         agent = self._agents.get(agent_id)
 
