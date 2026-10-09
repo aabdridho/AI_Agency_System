@@ -1,5 +1,6 @@
 import shutil
 import subprocess
+import threading
 from pathlib import Path
 
 
@@ -59,11 +60,55 @@ class BaseAdapter:
         output = []
         assert proc.stdout is not None
 
-        for line in proc.stdout:
-            print(line, end="", flush=True)
-            output.append(line)
+        def read_output() -> None:
+            try:
+                for line in proc.stdout:
+                    print(line, end="", flush=True)
+                    output.append(line)
+            except (ValueError, OSError):
+                # The main thread may close the pipe while
+                # terminating an interrupted/timed-out child.
+                return
 
-        return_code = proc.wait(timeout=timeout)
+        reader = threading.Thread(
+            target=read_output,
+            name=f"adapter-output:{self.binary}",
+            daemon=True,
+        )
+        reader.start()
+
+        def stop_process() -> None:
+            if proc.poll() is not None:
+                return
+
+            try:
+                proc.terminate()
+                proc.wait(timeout=2.0)
+            except subprocess.TimeoutExpired:
+                if proc.poll() is None:
+                    proc.kill()
+
+                try:
+                    proc.wait(timeout=2.0)
+                except subprocess.TimeoutExpired:
+                    # Do not hide the original timeout/interrupt.
+                    pass
+            except (OSError, ProcessLookupError):
+                pass
+
+        try:
+            return_code = proc.wait(timeout=timeout)
+        except (subprocess.TimeoutExpired, KeyboardInterrupt):
+            stop_process()
+            raise
+        finally:
+            if proc.poll() is not None:
+                try:
+                    proc.stdout.close()
+                except (OSError, ValueError):
+                    pass
+
+            reader.join(timeout=2.0)
 
         class Result:
             pass
