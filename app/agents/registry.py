@@ -192,6 +192,10 @@ class AgentRegistry:
 
         if agent.status == AgentStatus.OFFLINE:
             agent.status = AgentStatus.IDLE
+            agent.current_task = None
+            agent.project = None
+            agent.run_id = None
+            agent.session_id = None
 
         self._persist()
 

@@ -104,3 +104,28 @@ def test_execution_agent_session_keeps_legacy_shape_without_run():
     )
 
     assert session == "implementation:demo:TASK-001"
+
+def test_heartbeat_recovery_from_offline_clears_stale_context():
+    registry = AgentRegistry()
+
+    registry.update_state(
+        "codex",
+        AgentStateUpdate(
+            status=AgentStatus.OFFLINE,
+            current_task="TASK-OLD",
+            project="old-project",
+            run_id="run-old",
+            session_id="session-old",
+        ),
+    )
+
+    updated = registry.heartbeat(
+        "codex",
+        AgentHeartbeat(),
+    )
+
+    assert updated.status == AgentStatus.IDLE
+    assert updated.current_task is None
+    assert updated.project is None
+    assert updated.run_id is None
+    assert updated.session_id is None
