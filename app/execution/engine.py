@@ -1,4 +1,5 @@
 import inspect
+import threading
 from pathlib import Path
 
 from app.agents import (
@@ -19,6 +20,8 @@ from app.routing.models import RoutingPlan
 
 
 class ExecutionEngine:
+    AGENT_HEARTBEAT_INTERVAL_SECONDS = 5.0
+
     OWNER_AGENT_IDS = {
         "codex": "codex",
         "claude_code": "claude-code",
@@ -256,6 +259,91 @@ class ExecutionEngine:
         except Exception:
             return
 
+    def _agent_heartbeat(
+        self,
+        owner: str,
+        *,
+        project_name: str,
+        task_id: str,
+        phase: str,
+    ) -> None:
+        agent_id = self._agent_id(owner)
+
+        if not agent_id:
+            return
+
+        try:
+            self.agent_registry.heartbeat(
+                agent_id,
+                AgentHeartbeat(
+                    current_task=task_id,
+                    project=project_name,
+                    run_id=self.run_id,
+                    session_id=self._agent_session(
+                        project_name,
+                        task_id,
+                        phase,
+                    ),
+                ),
+            )
+        except Exception:
+            # Runtime observability must not break execution.
+            return
+
+    def _run_adapter_with_lease(
+        self,
+        owner: str,
+        adapter,
+        root: Path,
+        prompt: str,
+        *,
+        project_name: str,
+        task_id: str,
+        phase: str,
+        model: str | None,
+        effort: str | None,
+    ):
+        stop = threading.Event()
+
+        def refresh() -> None:
+            while not stop.wait(
+                self.AGENT_HEARTBEAT_INTERVAL_SECONDS
+            ):
+                self._agent_heartbeat(
+                    owner,
+                    project_name=project_name,
+                    task_id=task_id,
+                    phase=phase,
+                )
+
+        worker = threading.Thread(
+            target=refresh,
+            name=(
+                f"agent-heartbeat:"
+                f"{project_name}:{task_id}:{phase}"
+            ),
+            daemon=True,
+        )
+
+        worker.start()
+
+        try:
+            return self._run_adapter(
+                adapter,
+                root,
+                prompt,
+                model=model,
+                effort=effort,
+            )
+        finally:
+            stop.set()
+            worker.join(
+                timeout=(
+                    self.AGENT_HEARTBEAT_INTERVAL_SECONDS
+                    + 1.0
+                )
+            )
+
     def _agent_waiting(
         self,
         owner: str,
@@ -444,10 +532,14 @@ class ExecutionEngine:
                 )
                 repair_effort = "medium"
 
-                proc = self._run_adapter(
+                proc = self._run_adapter_with_lease(
+                    owner,
                     adapter,
                     root,
                     prompt,
+                    project_name=project_name,
+                    task_id=task_id,
+                    phase=f"qa-repair-{attempt}",
                     model=repair_model,
                     effort=repair_effort,
                 )
@@ -978,12 +1070,24 @@ class ExecutionEngine:
             )
 
             try:
-                proc = self._run_adapter(
+                proc = self._run_adapter_with_lease(
+                    decision.primary_owner,
                     adapter,
                     root,
                     prompt,
-                    model=getattr(decision, "primary_model", None),
-                    effort=getattr(decision, "primary_effort", None),
+                    project_name=plan.project_name,
+                    task_id=decision.task_id,
+                    phase="implementation",
+                    model=getattr(
+                        decision,
+                        "primary_model",
+                        None,
+                    ),
+                    effort=getattr(
+                        decision,
+                        "primary_effort",
+                        None,
+                    ),
                 )
             except KeyboardInterrupt:
                 self._agent_idle(
@@ -1118,12 +1222,24 @@ class ExecutionEngine:
                     )
 
                     try:
-                        final_proc = self._run_adapter(
+                        final_proc = self._run_adapter_with_lease(
+                            fallback,
                             fallback_adapter,
                             root,
                             prompt,
-                            model=getattr(decision, "fallback_model", None),
-                            effort=getattr(decision, "fallback_effort", None),
+                            project_name=plan.project_name,
+                            task_id=decision.task_id,
+                            phase="fallback",
+                            model=getattr(
+                                decision,
+                                "fallback_model",
+                                None,
+                            ),
+                            effort=getattr(
+                                decision,
+                                "fallback_effort",
+                                None,
+                            ),
                         )
                     except KeyboardInterrupt:
                         self._agent_idle(fallback)
