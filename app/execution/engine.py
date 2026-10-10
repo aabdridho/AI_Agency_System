@@ -711,6 +711,14 @@ class ExecutionEngine:
                 ) from exc
 
         for index, decision in enumerate(plan.decisions, start=1):
+            # V0.17 safety policy: routing is currently a linear execution plan.
+            # Once a task produces a failed ExecutionRecord, downstream tasks
+            # must not start. Dependency-aware continuation belongs to a future
+            # explicit DAG scheduler, not implicit guessing here.
+            if any(record.status == "failed" for record in records):
+                print("? Execution stopped: previous task failed.")
+                break
+
             task_branch = git.sanitize_branch(decision.task_id, decision.task_text)
             prompt = self.prompt_builder.build(root, decision.task_text)
 

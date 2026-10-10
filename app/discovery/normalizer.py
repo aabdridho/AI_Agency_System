@@ -37,6 +37,20 @@ SECTION_SYNONYMS = {
     "projects": ["project", "projects", "proyek"],
     "certifications": ["sertifikasi", "certification", "certifications", "certificate"],
     "contact": ["contact", "kontak", "contact form"],
+    "benefits": [
+        "benefit",
+        "benefits",
+        "benefit section",
+        "benefits section",
+        "manfaat",
+        "keuntungan",
+    ],
+    "cta": [
+        "cta",
+        "call to action",
+        "call-to-action",
+        "cta section",
+    ],
     "testimonials": ["testimonial", "testimonials", "testimoni"],
 }
 
@@ -77,6 +91,64 @@ class RequirementNormalizer:
             if any(re.search(rf"\b{re.escape(s)}\b", p) for s in synonyms):
                 return canonical
         return None
+
+    def extract_technology_constraints(self, prompt: str):
+        p = prompt.lower()
+        constraints = []
+
+        if re.search(r"\bhtml\b", p):
+            constraints.append("html")
+
+        if re.search(r"\bcss\b", p):
+            constraints.append("css")
+
+        if re.search(r"\bjavascript\b|\bjava\s*script\b|\bjs\b", p):
+            constraints.append("javascript")
+
+        if re.search(
+            r"\b(?:tanpa|tidak\s+pakai|tidak\s+menggunakan|without|no)\s+framework\b",
+            p,
+        ):
+            constraints.append("no_framework")
+
+        if re.search(r"\btypescript\b", p):
+            constraints.append("typescript")
+
+        return list(dict.fromkeys(constraints))
+
+    def extract_explicit_constraints(self, prompt: str):
+        # Keep wrapped/newline client sentences intact.
+        # Split only on sentence terminators so multiline lists such as
+        # "Cloud Deployment, Server Monitoring,\nand Infrastructure Setup."
+        # remain one confirmed constraint.
+        normalized_prompt = re.sub(r"\s*\n\s*", " ", prompt)
+        parts = re.split(r"(?<=[.!?])\s+", normalized_prompt)
+        markers = (
+            "harus",
+            "wajib",
+            "minimal",
+            "cukup menggunakan",
+            "tanpa framework",
+            "tidak perlu",
+            "tidak membutuhkan",
+            "mengarah ke",
+            "butuhkan",
+            "responsive",
+        )
+
+        constraints = []
+
+        for raw in parts:
+            sentence = raw.strip(" \t-")
+            if not sentence:
+                continue
+
+            lower = sentence.lower()
+
+            if any(marker in lower for marker in markers):
+                constraints.append(sentence)
+
+        return list(dict.fromkeys(constraints))
 
     def extract_sections(self, prompt: str):
         return self.normalize_sections(prompt)
@@ -329,6 +401,28 @@ class RequirementNormalizer:
                 key="theme", value=theme,
                 status="CONFIRMED", source="client_prompt_normalized",
                 blocking=False, confidence=1.0
+            ))
+
+        technology_constraints = self.extract_technology_constraints(prompt)
+        if technology_constraints:
+            items.append(RequirementItem(
+                key="technology_constraints",
+                value=technology_constraints,
+                status="CONFIRMED",
+                source="client_prompt_normalized",
+                blocking=False,
+                confidence=1.0,
+            ))
+
+        explicit_constraints = self.extract_explicit_constraints(prompt)
+        if explicit_constraints:
+            items.append(RequirementItem(
+                key="explicit_constraints",
+                value=explicit_constraints,
+                status="CONFIRMED",
+                source="client_prompt_normalized",
+                blocking=False,
+                confidence=1.0,
             ))
 
         sections = self.extract_sections(prompt)

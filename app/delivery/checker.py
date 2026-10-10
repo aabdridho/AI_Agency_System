@@ -104,7 +104,7 @@ class DeliveryChecker:
             if npm:
                 out=[]
                 for s in ('lint','typecheck','test','build'):
-                    if s in scripts: out.append([npm,'test','--','--runInBand'] if s=='test' else [npm,'run',s])
+                    if s in scripts: out.append([npm, "test"] if s == "test" else [npm, "run", s])
                 return out
         if (self.repo/'pyproject.toml').exists(): return [[sys.executable,'-m','pytest','-q']]
         return []

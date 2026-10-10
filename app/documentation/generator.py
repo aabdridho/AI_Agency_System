@@ -89,6 +89,12 @@ class ProjectDocumentationGenerator:
                 "## Frontend",
                 "- [ ] Establish page layout and design system from confirmed visual direction",
             ]
+            if data.get("technology_constraints"):
+                lines.append(
+                    "- [ ] Respect confirmed technology constraints: "
+                    f"{self._fmt(data['technology_constraints'])}"
+                )
+
             for section in sections:
                 lines.append(f"- [ ] Implement `{section}` section")
 
@@ -196,6 +202,7 @@ class ProjectDocumentationGenerator:
             f"- Visual direction: {self._fmt(data.get('visual_direction', 'not specified'))}",
             f"- Theme: {self._fmt(data.get('theme', 'not specified'))}",
             f"- Target audience: {self._fmt(data.get('target_audience', 'not specified'))}",
+            f"- Technology constraints: {self._fmt(data.get('technology_constraints', 'not specified'))}",
             "",
             "## Required Sections",
         ]

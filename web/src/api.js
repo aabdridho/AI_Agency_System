@@ -64,10 +64,43 @@ export const approveProjectIntake = (
 
 export const listProjects = () => req('/api/projects');
 export const getProject = (name) => req(`/api/projects/${encodeURIComponent(name)}`);
-export const executeProject = (name) =>
-  req(`/api/projects/${encodeURIComponent(name)}/execute`, {
-    method: 'POST',
-  });
+const executionRequests = new Map();
+
+export const executeProject = (name) => {
+  const projectName = String(name ?? '').trim();
+
+  if (!projectName) {
+    return Promise.reject(
+      new Error('Project name wajib diisi.')
+    );
+  }
+
+  const existing = executionRequests.get(projectName);
+
+  if (existing) {
+    return existing;
+  }
+
+  const request = req(
+    `/api/projects/${encodeURIComponent(projectName)}/execute`,
+    {
+      method: 'POST',
+    },
+  );
+
+  executionRequests.set(projectName, request);
+
+  const cleanup = () => {
+    if (executionRequests.get(projectName) === request) {
+      executionRequests.delete(projectName);
+    }
+  };
+
+  void request.then(cleanup, cleanup);
+
+
+  return request;
+};
 
 export const saveRouting = (name) => req(`/api/projects/${encodeURIComponent(name)}/route`, { method: 'POST' });
 export const getConfig = () => req('/api/config');

@@ -904,6 +904,73 @@ class ProjectOrchestrator:
             project_name
         )
 
+    def _execution_lock_path(
+        self,
+        project_name: str,
+    ) -> Path:
+        return (
+            self.runtime_root
+            / "orchestration"
+            / project_name
+            / "execution.lock"
+        )
+
+    def _acquire_execution_lock(
+        self,
+        project_name: str,
+    ) -> Path:
+        import os
+
+        path = self._execution_lock_path(
+            project_name
+        )
+
+        path.parent.mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+
+        try:
+            descriptor = os.open(
+                path,
+                os.O_CREAT
+                | os.O_EXCL
+                | os.O_WRONLY,
+            )
+        except FileExistsError as exc:
+            raise RuntimeError(
+                "Real execution untuk project "
+                f"'{project_name}' sedang berjalan. "
+                "Duplicate execution ditolak."
+            ) from exc
+
+        try:
+            payload = (
+                f"pid={os.getpid()}\n"
+            ).encode("utf-8")
+
+            os.write(
+                descriptor,
+                payload,
+            )
+        finally:
+            os.close(descriptor)
+
+        return path
+
+    def _release_execution_lock(
+        self,
+        path: Path,
+    ) -> None:
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
+        except OSError:
+            # Cleanup failure must not replace the
+            # original execution outcome.
+            pass
+
     def run_until_blocked(
         self,
         project_name: str,
@@ -914,67 +981,130 @@ class ProjectOrchestrator:
         Continue every safe automatic stage until the pipeline
         reaches input/approval/failure/completion.
 
+        Real execution uses a project-scoped filesystem lock so
+        concurrent approval requests cannot start duplicate runs.
+
         Production deployment is intentionally NOT executed here.
         """
 
-        while True:
-            state = self.resume(
-                project_name
+        execution_lock: Path | None = None
+
+        if approve_real_execution:
+            execution_lock = (
+                self._acquire_execution_lock(
+                    project_name
+                )
             )
 
-            if state.status in {
-                "failed",
-                "completed",
-            }:
-                return state
+        try:
+            while True:
+                state = self.resume(
+                    project_name
+                )
 
-            if state.status == "waiting_input":
-                return state
-
-            if (
-                state.status == "waiting_approval"
-                and state.waiting_for
-                == "deployment_approval"
-            ):
-                return state
-
-            if (
-                state.status == "waiting_approval"
-                and state.waiting_for
-                == "real_execution_approval"
-            ):
-                if not approve_real_execution:
+                if state.status in {
+                    "failed",
+                    "completed",
+                }:
                     return state
 
-                state = self.run_execution(
-                    project_name
-                )
-
-                if state.status == "failed":
+                if state.status == "waiting_input":
                     return state
 
-                continue
+                if (
+                    state.status
+                    == "waiting_approval"
+                    and state.waiting_for
+                    == "deployment_approval"
+                ):
+                    return state
 
-            if state.current_stage == "routing":
-                self.run_routing(
-                    project_name
+                if (
+                    state.status
+                    == "waiting_approval"
+                    and state.waiting_for
+                    == "real_execution_approval"
+                ):
+                    if not approve_real_execution:
+                        return state
+
+                    running_state = (
+                        OrchestrationState(
+                            project_name=project_name,
+                            status="running",
+                            current_stage="execution",
+                            completed_stages=list(
+                                state.completed_stages
+                            ),
+                            waiting_for=None,
+                            failed_stage=None,
+                            last_error=None,
+                        )
+                    )
+
+                    self.state_store.save(
+                        running_state
+                    )
+
+                    try:
+                        state = self.run_execution(
+                            project_name
+                        )
+                    except BaseException as exc:
+                        failed_state = (
+                            OrchestrationState(
+                                project_name=project_name,
+                                status="failed",
+                                current_stage="execution",
+                                completed_stages=list(
+                                    state.completed_stages
+                                ),
+                                waiting_for=None,
+                                failed_stage="execution",
+                                last_error=(
+                                    exc.__class__.__name__
+                                ),
+                            )
+                        )
+
+                        self.state_store.save(
+                            failed_state
+                        )
+
+                        raise
+
+                    if state.status == "failed":
+                        return state
+
+                    continue
+
+                if state.current_stage == "routing":
+                    self.run_routing(
+                        project_name
+                    )
+                    continue
+
+                if state.current_stage == "delivery":
+                    self.run_delivery(
+                        project_name
+                    )
+                    continue
+
+                if state.current_stage == "economics":
+                    self.run_economics(
+                        project_name
+                    )
+                    continue
+
+                # Discovery and documentation are not
+                # automated yet.
+                return state
+
+        finally:
+            if execution_lock is not None:
+                self._release_execution_lock(
+                    execution_lock
                 )
-                continue
-
-            if state.current_stage == "delivery":
-                self.run_delivery(
-                    project_name
-                )
-                continue
-
-            if state.current_stage == "economics":
-                self.run_economics(
-                    project_name
-                )
-                continue
-
-            # Discovery and documentation are not automated yet.
-            return state
 
     def next_stage(
         self,

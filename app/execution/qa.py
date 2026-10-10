@@ -83,7 +83,7 @@ class DeterministicQA:
         if "typecheck" in scripts:
             commands.append([npm_cmd, "run", "typecheck"])
         if "test" in scripts:
-            commands.append([npm_cmd, "test", "--", "--runInBand"])
+            commands.append([npm_cmd, "test"])
         if "build" in scripts:
             commands.append([npm_cmd, "run", "build"])
         return commands
@@ -106,7 +106,7 @@ class DeterministicQA:
                     # Fall back to the repository test suite; specialized static
                     # coverage checks below ensure contact/submission evidence exists.
                     if "test" in scripts:
-                        commands.append([npm_cmd, "test", "--", "--runInBand"])
+                        commands.append([npm_cmd, "test"])
                 if "typecheck" in scripts:
                     commands.append([npm_cmd, "run", "typecheck"])
 
@@ -145,16 +145,46 @@ class DeterministicQA:
         )
 
     def _source_files(self, repo: Path) -> list[Path]:
-        roots = [repo / "src", repo / "app", repo / "pages", repo / "components", repo / "tests"]
-        suffixes = {".ts", ".tsx", ".js", ".jsx", ".css", ".scss", ".html", ".mjs", ".py"}
+        # Support both framework-style repositories and plain/static sites.
+        # Generated client projects may keep implementation source under
+        # assets/ or directly at repository root.
+        roots = [
+            repo / "src",
+            repo / "app",
+            repo / "pages",
+            repo / "components",
+            repo / "tests",
+            repo / "assets",
+            repo / "public",
+        ]
+        suffixes = {
+            ".ts",
+            ".tsx",
+            ".js",
+            ".jsx",
+            ".css",
+            ".scss",
+            ".html",
+            ".mjs",
+            ".py",
+        }
+
         files: list[Path] = []
+
         for base in roots:
             if not base.exists():
                 continue
             for path in base.rglob("*"):
                 if path.is_file() and path.suffix.lower() in suffixes:
                     files.append(path)
-        return files
+
+        # Plain HTML/CSS/JS projects commonly keep entry files at repo root.
+        for path in repo.iterdir():
+            if path.is_file() and path.suffix.lower() in suffixes:
+                files.append(path)
+
+        # Preserve deterministic ordering and avoid duplicate paths.
+        return sorted(set(files))
 
     def _combined_source(self, repo: Path) -> str:
         chunks = []

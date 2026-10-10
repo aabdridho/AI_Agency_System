@@ -1,6 +1,8 @@
 # Changelog
 
-## V0.17.0
+## V0.17
+- Added project-scoped single-flight execution guard and frontend request coalescing to prevent duplicate real execution runs.
+- Preserved explicit client technology/scope constraints through discovery and documentation; execution now fails fast after an unrecovered task failure and deterministic Node QA respects repository-owned test commands..0
 
 ### Agent runtime correlation
 

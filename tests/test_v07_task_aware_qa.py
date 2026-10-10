@@ -41,7 +41,7 @@ def test_validation_profile_runs_full_node_suite(tmp_path, monkeypatch):
     assert commands == [
         ["npm.cmd", "run", "lint"],
         ["npm.cmd", "run", "typecheck"],
-        ["npm.cmd", "test", "--", "--runInBand"],
+        ["npm.cmd", "test"],
         ["npm.cmd", "run", "build"],
     ]
 
