@@ -667,6 +667,43 @@ export function renderExecutionSnapshot(d = current) {
     }
 
 
+    if (event.event_type === 'run.started') {
+      setStage(
+        'execution',
+        'active',
+        'execution run aktif',
+      );
+
+      return;
+    }
+
+    if (event.event_type === 'run.completed') {
+      setStage(
+        'execution',
+        event.status === 'failed'
+          ? 'fail'
+          : 'done',
+        event.status === 'failed'
+          ? 'execution selesai dengan kegagalan'
+          : 'execution selesai',
+      );
+
+      return;
+    }
+
+    if (event.event_type === 'run.failed') {
+      setStage(
+        'execution',
+        'fail',
+        event.detail
+          ? `execution gagal · ${event.detail}`
+          : 'execution gagal',
+      );
+
+      return;
+    }
+
+
     if (event.event_type === 'task.created') {
       nodeState(
         'task',
@@ -918,6 +955,62 @@ async function replayExecutionEvents(d) {
 
     const tokens =
       eventTokenSummary(d, event);
+
+    if (event.event_type === 'run.started') {
+      setStage(
+        'execution',
+        'active',
+        'execution run aktif',
+      );
+
+      await line(
+        'execution',
+        't-warn',
+        `run started · ${event.run_id ?? 'unknown run'}`,
+      );
+
+      continue;
+    }
+
+    if (event.event_type === 'run.completed') {
+      const failed = event.status === 'failed';
+
+      setStage(
+        'execution',
+        failed ? 'fail' : 'done',
+        failed
+          ? 'execution selesai dengan kegagalan'
+          : 'execution selesai',
+      );
+
+      await line(
+        'execution',
+        failed ? 't-fail' : 't-pass',
+        `run completed · ${event.status} · ` +
+        `${event.metadata?.record_count ?? 0} records`,
+      );
+
+      continue;
+    }
+
+    if (event.event_type === 'run.failed') {
+      setStage(
+        'execution',
+        'fail',
+        event.detail
+          ? `execution gagal · ${event.detail}`
+          : 'execution gagal',
+      );
+
+      await line(
+        'execution',
+        't-fail',
+        `run failed · ${event.detail ?? 'abnormal termination'}`,
+      );
+
+      continue;
+    }
+
 
     if (event.event_type === 'task.created') {
       nodeState('task', 'active');

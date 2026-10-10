@@ -1,11 +1,11 @@
-# AI Agency System V0.16
+# AI Agency System V0.17
 
 AI Agency System is a local-first AI project orchestration system for turning client briefs into approved requirements, documentation, GOAT-routed tasks, implementation, deterministic QA, delivery readiness, economics, and controlled deployment approval.
 
 ## Current Release
 
-- Version: `0.16.0`
-- Git tag: `v0.16`
+- Version: `0.17.0`
+- Git tag: `v0.17`
 - Primary CLI: `python agency.py`
 - Runtime state: `runtime_data/`
 - Production deployment requires explicit approval.
@@ -85,6 +85,26 @@ Stages: `discovery`, `documentation`, `routing`, `execution`, `delivery`, `econo
 Operational routing, execution, delivery, deployment, handoff, usage, and orchestration data remain under `runtime_data/` and outside client repositories.
 
 ## Release History
+
+### V0.17 - Agent Runtime Correlation and Execution Hardening
+
+V0.17 strengthens the Control Room execution runtime without changing the
+one-task-one-primary-owner GOAT routing contract.
+
+Key changes:
+
+- execution agents are correlated to execution `run_id`
+- agent sessions are run-scoped
+- active RUNNING state takes precedence over WAITING state in the Control Room
+- stale execution context is cleared when an OFFLINE agent recovers
+- execution lifecycle emits `run.started`, `run.completed`, and `run.failed`
+- dashboard selects the latest observed run, including abnormal failed runs
+- provider execution keeps a bounded runtime heartbeat lease
+- stale RUNNING agents transition to OFFLINE
+- streaming provider adapters enforce real execution timeouts
+- Windows provider process trees are cleaned up on timeout/interruption
+- execution events and per-run usage remain correlated to the selected run
+- economics and billing remain cumulative across usage history
 
 ### V0.16 - Agent Control Room, GOAT Routing and Execution Observability
 

@@ -23,6 +23,7 @@ class AgentRecord(BaseModel):
 
     current_task: str | None = None
     project: str | None = None
+    run_id: str | None = None
     session_id: str | None = None
 
     last_activity: str | None = None
@@ -33,10 +34,12 @@ class AgentStateUpdate(BaseModel):
     status: AgentStatus
     current_task: str | None = None
     project: str | None = None
+    run_id: str | None = None
     session_id: str | None = None
 
 
 class AgentHeartbeat(BaseModel):
     current_task: str | None = None
     project: str | None = None
+    run_id: str | None = None
     session_id: str | None = None

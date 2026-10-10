@@ -691,20 +691,82 @@ class ProjectOrchestrator:
             / "execution"
         )
 
-        report = ExecutionEngine(
-            usage_ledger=usage_ledger,
-            event_ledger=event_ledger,
-            run_id=run_id,
-        ).execute(
-            plan,
-            root,
-            dry_run=False,
-            allow_escalation=True,
+        def append_run_event(
+            event_type: str,
+            *,
+            status: str,
+            detail: str | None = None,
+            metadata: dict | None = None,
+        ) -> None:
+            try:
+                event_ledger.append(
+                    project_name=project_name,
+                    task_id=None,
+                    run_id=run_id,
+                    event_type=event_type,
+                    phase="run",
+                    status=status,
+                    owner="internal_decision",
+                    detail=detail,
+                    metadata=metadata or {},
+                )
+            except Exception:
+                # Observability must never break execution.
+                return
+
+        append_run_event(
+            "run.started",
+            status="running",
+            metadata={
+                "task_count": len(plan.decisions),
+            },
         )
 
-        ExecutionStorage().save(
-            report,
-            self.runtime_root,
+        try:
+            report = ExecutionEngine(
+                usage_ledger=usage_ledger,
+                event_ledger=event_ledger,
+                run_id=run_id,
+            ).execute(
+                plan,
+                root,
+                dry_run=False,
+                allow_escalation=True,
+            )
+
+            ExecutionStorage().save(
+                report,
+                self.runtime_root,
+            )
+
+        except BaseException as exc:
+            append_run_event(
+                "run.failed",
+                status="failed",
+                detail=str(exc) or exc.__class__.__name__,
+                metadata={
+                    "exception_type": exc.__class__.__name__,
+                },
+            )
+            raise
+
+        failed_records = [
+            record
+            for record in report.records
+            if record.status == "failed"
+        ]
+
+        append_run_event(
+            "run.completed",
+            status=(
+                "failed"
+                if failed_records
+                else "success"
+            ),
+            metadata={
+                "record_count": len(report.records),
+                "failed_record_count": len(failed_records),
+            },
         )
 
         return self.resume(

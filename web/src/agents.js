@@ -5,6 +5,7 @@ import {
   setNodeLabel,
 } from './map.js';
 import { store } from './ui.js';
+import { selectRuntimeAgents } from './agent_scope.js';
 
 
 const POLL_MS = 650;
@@ -40,19 +41,6 @@ const short = (value, max = 24) => {
 
   return `${text.slice(0, max - 1)}…`;
 };
-
-
-function belongsToProject(agent, selectedProject) {
-  if (!agent.project) {
-    return true;
-  }
-
-  if (!selectedProject) {
-    return true;
-  }
-
-  return agent.project === selectedProject;
-}
 
 
 function applyAgent(agent) {
@@ -139,6 +127,7 @@ function applyAgent(agent) {
 export function renderAgentRuntime(
   agents,
   selectedProject,
+  selectedRunId,
   renderHistorical,
 ) {
   /*
@@ -149,19 +138,12 @@ export function renderAgentRuntime(
    * execution-event snapshot for the selected project.
    */
 
-  const relevant = agents.filter(
-    (agent) =>
-      AGENT_META[agent.id]
-      && belongsToProject(
-        agent,
-        selectedProject,
-      ),
-  );
-
-  const active = relevant.filter(
-    (agent) =>
-      agent.status === 'running'
-      || agent.status === 'waiting',
+  const active = selectRuntimeAgents(
+    agents.filter(
+      (agent) => AGENT_META[agent.id],
+    ),
+    selectedProject,
+    selectedRunId,
   );
 
   if (!active.length) {
@@ -198,6 +180,7 @@ async function poll(context) {
     renderAgentRuntime(
       agents,
       context.selectedProject(),
+      context.selectedRunId(),
       context.renderHistorical,
     );
   } catch {
